@@ -159,7 +159,8 @@ You can also see the cluster autoscaling into action:
 
 ### Running the Kafka producer on AWS
 
-Create a Amazon MSK cluster with at leas two brokers using ```3.5.1```, [Apache Zookeeper](https://zookeeper.apache.org/) mode version and use as instance type ```kafka.m7g.xlarge```. Do not use public access and choose two private subnets to deploy it. For the security group remember that the EMR cluster and the EC2 based producer will need to reach the cluster. For security, use plaintext (in production you should secure access). Choose 200GB as storage size for each broker and do not enable Tiered storage. For the cluster configuration use this:
+Create a Amazon MSK cluster with at leas two brokers using ```3.5.1```, [Apache Zookeeper](https://zookeeper.apache.org/) mode version and use as instance type ```kafka.m7g.xlarge```. Do not use public access and choose two private subnets to deploy it. For the security group remember that the EMR cluster and the EC2 based producer will need to reach the cluster and act accordingly. For security, use ```PLAINTEXT``` (in production you should secure access to the cluster). Choose ```200GB``` as storage size for each broker and do not enable ```Tiered storage```. For the cluster configuration use this one:
+
 ```
 auto.create.topics.enable=true
 default.replication.factor=3
@@ -179,8 +180,13 @@ log.retention.hours=2
 log.retention.bytes=10073741824
 ```
 
-Running the Kafka producer on an EC2 instance, remember to change the bootstrap connection string.
+Running the Kafka producer on an Amazon EC2 instance, remember to change the bootstrap connection string.
 
+You will need to install Java if you are using and Amazon Linux instance. 
+```
+sudo yum install java-17-amazon-corretto-devel
+```
+Then, download the jar to the instance and execute the producer. 
 ```
 aws s3 cp s3://big-data-demos-iceberg/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar .
 java -cp streaming-iceberg-ingest-1.0-SNAPSHOT.jar com.aws.emr.proto.kafka.producer.ProtoProducer kafkaBoostrapString
