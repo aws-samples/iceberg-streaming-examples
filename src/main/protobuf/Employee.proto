@@ -1,0 +1,25 @@
+syntax = "proto3";
+package gsr.proto.post;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+message Employee {
+      int32 id = 1;
+      string name = 2;
+      string address = 3;
+      google.protobuf.Int32Value employee_age = 4;
+      google.protobuf.Timestamp start_date = 5;
+     Team team = 6;
+     Role role = 7;
+
+}
+message Team {
+     string name = 1;
+     string location = 2;
+}
+enum Role {
+     MANAGER = 0;
+     DEVELOPER = 1;
+     ARCHITECT = 2;
+}
