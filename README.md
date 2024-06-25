@@ -1,17 +1,205 @@
-## My Project
+This repo contains examples of high throughput ingestion using Apache Spark and Apache Iceberg. These examples cover IoT and CDC scenarios using best practices. The Code can be deployed into any Spark compatible engine like Amazon EMR Serverless or AWS Glue. A fully local developer environment is also provided.
+# Streaming Apache Iceberg examples using Apache Spark
 
-TODO: Fill this README out!
+This projects has examples of high volume streaming ingestion from [Apache Kafka](https://kafka.apache.org/) using [Apache Spark](https://spark.apache.org/) and [Apache Iceberg](https://iceberg.apache.org/). The focus in this repository is to go further than the typical poc consuming few messages. 
 
-Be sure to:
+**Our aim here is to provide support for around 400,000 msg/seg on all scenarios**. 
 
-* Change the title in this README
-* Edit your repository description on GitHub
+The concepts seen here are applicable to PySpark or Scala programs with little effort. Remember that we just program
+the transformations and those are converted to a logical plan and then to native code via the Java Virtual Machine (JVM) or to native code using projects such as [Apache Data Fusion Comet](https://github.com/apache/datafusion-comet), [Velox](https://github.com/apache/datafusion-comet) or [Photon](https://www.databricks.com/product/photon).
+
+Why Java? Because why not, remember that this nowadays gets executed by the JVM ( until previous projects arise). Remember that with this approach we can use libraries in an easy way ( without the Scala/Python/Java 'mess'), we can program performant UDFs and there is a friendly local development environment (where you can debug everything) with different options.
+
+The example uses maven profiles to automatically filter required libraries when deployed to [Amazon EMR](https://aws.amazon.com/emr/) ( the Spark and Iceberg libraries will be marked as provided) and therefore you will be using the optimized Spark runtime from EMR. The logging is implemented using [Log4j2](https://logging.apache.org/log4j/2.12.x/) ( where its config can be further tuned using EMR Serverless configs) as Spark uses it behind the scenes. 
+
+**Environment types:** 
+
+- Local development using a dockerized Kafka.
+- Local development against Amazon S3, and AWS Glue Catalog, here we will also use the dockerized Kafka.
+- Production mode where we can deploy the code to an Amazon EMR Serverless cluster.
+
+You can run these examples on any Spark compatible runtime too, but that's for a pull request ( if you like to contribute).
+
+In the case of Amazon Web Services on AWS Glue, Amazon EMR or Amazon EMR Serverless.
+
+Remember also that these jobs and code can be adapted for **batch mode easily** (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end. 
+
+## IoT Scenarios
+
+Here we have different approaches and common formats. About the different scenarios the main idea is high throughput streaming
+ingestion:
+- Native Iceberg writing with deduplication via even-time watermarking.
+- Custom process writing with compaction via n-batches and deduplication via merge into.
+
+For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios there.
+
+Remember that exactly once systems are difficult to implement and that for Spark you will need and idempotent sink.
+
+Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run.
+An example of such approach can be seen also on the utils package.
+
+### Protocol Buffers
+
+[Protocol Buffers](https://protobuf.dev/) are language-neutral, platform-neutral extensible mechanisms for serializing structured data.
+
+**Examples**: 
+- Native Java Producer/Consumer. 
+- AWS Glue Registry based Java Producer/Consumer.
+- Native Spark Structured streaming consumer. 
+- UDF based Spark Structured streaming consumer.
+
+### Apache Avro
+
+[Apache Avro](https://avro.apache.org/) - a data serialization system.
+
+**Examples**: 
+- Native Java Producer/Consumer. 
+- AWS Glue Registry based Java Producer/Consumer.
+- Native Spark Structured streaming consumer. 
+
+### Json
+
+Used schema in Glue Schema Registry
+```
+{
+	"$id": "https://example.com/person.schema.json",
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"title": "Person",
+	"type": "object",
+	"properties": {
+		"firstName": {
+			"type": "string",
+			"description": "The person's first name."
+		},
+		"lastName": {
+			"type": "string",
+			"description": "The person's last name."
+		},
+		"age": {
+			"description": "Age in years which must be equal to or greater than zero.",
+			"type": "integer",
+			"minimum": 0
+		}
+	}
+}
+
+```
+## CDC Scenarios
+
+Here the reference is tabular CDC best practices.
+
+blah blah blah
+
+## Requirements
+
+* Java 17 + ( you could adapt this code easily to run on Java 8 or Java 11)
+* Maven 3.9+
+* 16GB of RAM and more than 2 cores. 
+* Whatever IDE you like ([Intellij](https://www.jetbrains.com/intellij/), [Visual Studio Code](https://code.visualstudio.com/), [NetBeans](https://apache.netbeans.org/), etc)
+
+For local development and testing you can use the provided ```docker-compose.yml``` to spin up a Kafka cluster.
+
+You can generate the description file using the protobuf compiler like this. You need to install the protobuf compiler for your system, for example on MacOs is available on ```brew```. 
+
+```protoc --include_imports --descriptor_set_out=Employee.desc Employee.proto'```
+
+**Remember that for simple scenarios you will be better suited using Kafka Connect Tabular Iceberg Connector or using Kinesis Firehose.**
+
+### Running on EMR Serverless:
+
+
+--files
+Need to add the application....
+
+```aws emr-serverless start-job-run     --application-id 00fk8f0r28sb9t0p     --name iot-streaming     --execution-role-arn arn:aws:iam::378683551918:role/EMRServerlessS3RuntimeRole     --mode 'STREAMING'     --job-driver '{
+        "sparkSubmit": {
+            "entryPoint": "s3://big-data-demos-iceberg/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
+            "entryPointArguments": ["false","s3://big-data-demos-iceberg/warehouse","s3://big-data-demos-iceberg/Employee.desc","s3://big-data-demos-iceberg/check","b-2.bigdata.msys1k.c9.kafka.eu-west-1.amazonaws.com:9092,b-1.bigdata.msys1k.c9.kafka.eu-west-1.amazonaws.com:9092","true"],
+            "sparkSubmitParameters": "--class com.aws.emr.spark.iot.SparkCustomIcebergIngest --conf spark.executor.cores=4 --conf spark.hadoop.hive.metastore.client.factory.class=com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory --conf spark.executor.memory=16g  --conf spark.driver.cores=4 --conf spark.driver.memory=8g --conf spark.dynamicAllocation.minExecutors=4 --conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.emr-serverless.executor.disk.type=shuffle_optimized --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
+        }
+    }'
+{
+	
+	
+```
+
+Expected performance should be around 450.000 msgs per sec if you use the ```EXAMPLE``` without merge deduplication.
+
+<img src="imgs/emr_performance.png" align="center" height="500" width="600"/>
+
+You can also see the cluster autoscaling into action:
+
+<img src="imgs/emr_cluster_autoscaling.png" align="center" height="520" width="550"/>
+
+### Running on a local environment.
+
+1. Install a Java SDK 17 like [Amazon Coretto](https://aws.amazon.com/corretto/).
+2. Install [Docker](https://www.docker.com/) for your environment. 
+3. Open the desired IDE. 
+4. Use the IDE to issue the ```package ``` command of maven selecting the local profile.
+5. If you wish to use the AWS Glue Data Catalog and S3 remember to have the corresponding permissions (have your AWS credentials avaliable), there are plugins for both [Intellij](https://aws.amazon.com/intellij/?pg=developertools) and [Visual Studio Code](https://aws.amazon.com/visualstudiocode/) that can be helpful here.
+6. Start the local Kafka broker via ```docker-compose up``` command.
+7. Run the examples with the desired arguments, remember that you will need to add the required VM options for letting Spark to work on Java 17: 
+```
+--add-opens=java.base/java.lang=ALL-UNNAMED
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+--add-opens=java.base/java.lang.reflect=ALL-UNNAMED
+--add-opens=java.base/java.io=ALL-UNNAMED
+--add-opens=java.base/java.net=ALL-UNNAMED
+--add-opens=java.base/java.nio=ALL-UNNAMED
+--add-opens=java.base/java.util=ALL-UNNAMED
+--add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED
+--add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+--add-opens=java.base/sun.nio.cs=ALL-UNNAMED
+--add-opens=java.base/sun.security.action=ALL-UNNAMED
+--add-opens=java.base/sun.util.calendar=ALL-UNNAMED
+--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED
+```
+
+### Running the Kafka producer on AWS
+
+Create a Amazon MSK cluster with at leas two brokers using ```3.5.1```, [Apache Zookeeper](https://zookeeper.apache.org/) mode version and use as instance type ```kafka.m7g.xlarge```. Do not use public access and choose two private subnets to deploy it. For the security group remember that the EMR cluster and the EC2 based producer will need to reach the cluster. For security, use plaintext (in production you should secure access). Choose 200GB as storage size for each broker and do not enable Tiered storage. For the cluster configuration use this:
+```
+auto.create.topics.enable=true
+default.replication.factor=3
+min.insync.replicas=2
+num.io.threads=8
+num.network.threads=5
+num.partitions=32
+num.replica.fetchers=2
+replica.lag.time.max.ms=30000
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+socket.send.buffer.bytes=102400
+unclean.leader.election.enable=true
+zookeeper.session.timeout.ms=18000
+compression.type=zstd
+log.retention.hours=2
+log.retention.bytes=10073741824
+```
+
+Running the Kafka producer on an EC2 instance, remember to change the bootstrap connection string.
+
+```
+aws s3 cp s3://big-data-demos-iceberg/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar .
+java -cp streaming-iceberg-ingest-1.0-SNAPSHOT.jar com.aws.emr.proto.kafka.producer.ProtoProducer kafkaBoostrapString
+```
+
+## Costs
+
+Remember that this example is for high throughput scenarios and therefore the config may lead to quite big bill, remember to stop the EMR Serverless application, the used instance for the Kafka producer and delete the Amazon MSK cluster when not in use.
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+The code here is not secured in any way, you should secure your Apache Kafka cluster and be aware that some dependencies
+may have known vulnerabilities. If you deploy any service on top of AWS you should configure the roles using the least permission model
+using [IAM roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) and [Amazon Lake Formation](https://aws.amazon.com/lake-formation/) if needed. 
+
+## Contributing
+
+See [CONTRIBUTING](CONTRIBUTING.md) for more information.
 
 ## License
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
-
