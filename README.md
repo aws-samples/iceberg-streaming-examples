@@ -1,8 +1,8 @@
 # Streaming Apache Iceberg examples using Apache Spark
 
-This projects has examples of high volume streaming ingestion from [Apache Kafka](https://kafka.apache.org/) using [Apache Spark](https://spark.apache.org/) and [Apache Iceberg](https://iceberg.apache.org/). The focus in this repository is to go further than the typical poc consuming few messages. 
+This projects has examples of high volume streaming ingestion from [Apache Kafka](https://kafka.apache.org/) using [Apache Spark](https://spark.apache.org/) and [Apache Iceberg](https://iceberg.apache.org/). 
 
-**Our aim here is to provide support for around 400,000 msg/seg on all scenarios**. 
+The focus in this repository is to go further than the typical poc consuming few messages or small csv files. The aim here is to provide support for around **400,000 msg/seg** on all scenarios. 
 
 The concepts seen here are applicable to PySpark or Scala programs with little effort. Remember that we just program
 the transformations and those are converted to a logical plan and then to native code via the Java Virtual Machine (JVM) or to native code using projects such as [Apache Data Fusion Comet](https://github.com/apache/datafusion-comet), [Velox](https://github.com/apache/datafusion-comet) or [Photon](https://www.databricks.com/product/photon).
