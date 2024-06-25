@@ -21,7 +21,7 @@ You can run these examples on any Spark compatible runtime too, but that's for a
 
 In the case of Amazon Web Services on AWS Glue, Amazon EMR or Amazon EMR Serverless.
 
-Remember also that these jobs and code can be adapted for **batch mode easily** (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end. 
+Remember also that these jobs and code can be adapted for **batch mode** easily (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end anyway. 
 
 ## IoT Scenarios
 
