@@ -1,0 +1,19 @@
+{"namespace": "gsr.avro.post",
+ "type": "record",
+ "name": "Employee",
+ "fields": [
+     {"name": "employee_id", "type": "long"},
+     {"name": "age",  "type": "int"},
+     {"name": "start_date",
+       "type": {
+       "type": "long",
+       "logicalType": "timestamp-millis"
+       }
+     },
+   {"name": "team", "type": "string"},
+   {"name": "role", "type": "string"},
+   {"name": "address", "type": "string"},
+   {"name": "name", "type": "string"}]
+}
+
+
