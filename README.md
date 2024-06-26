@@ -114,7 +114,9 @@ s3bucket/
 	/checkpoint
 ```
 
-Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. 
+Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. The ```warehouse``` will be the place where the Iceberg Data and Metadata will libe and ```checkpoint``` will be used for Structured Streaming checkpointing mechanismn. 
+ 
+Create a Database in the AWS Glue Data Catalog with the name ```bigdata```.
 
 You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture.
 
