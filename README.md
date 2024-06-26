@@ -198,9 +198,11 @@ sudo yum install java-17-amazon-corretto-devel
 ```
 Then, download the jar to the instance and execute the producer. 
 ```
-aws s3 cp s3://big-data-demos-iceberg/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar .
+aws s3 cp s3://s3bucket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar .
 java -cp streaming-iceberg-ingest-1.0-SNAPSHOT.jar com.aws.emr.proto.kafka.producer.ProtoProducer kafkaBoostrapString
 ```
+
+Remember that your EC2 instance need to have network access to the MSK cluster, you will need to configure the VPC, Security Groups and Subnet/s. 
 
 ## Costs
 
@@ -208,8 +210,7 @@ Remember that this example is for high throughput scenarios and therefore the co
 
 ## Security
 
-The code here is not secured in any way, you should secure your Apache Kafka cluster and be aware that some dependencies
-may have known vulnerabilities. If you deploy any service on top of AWS you should configure the roles using the least permission model
+The code here is not secured in any way, you should secure your Apache Kafka cluster and be aware that some dependencies may have known vulnerabilities. If you deploy any service on top of AWS you should configure the roles using the least permission model
 using [IAM roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) and [Amazon Lake Formation](https://aws.amazon.com/lake-formation/) if needed. 
 
 ## Contributing
