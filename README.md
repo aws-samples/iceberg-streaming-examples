@@ -196,7 +196,7 @@ You will need to install Java if you are using and Amazon Linux instance.
 ```
 sudo yum install java-17-amazon-corretto-devel
 ```
-Then, download the jar to the instance and execute the producer. 
+Then, download the jar to the instance and execute the producer. With the following command you can start the Protocol Buffers Producer.
 ```
 aws s3 cp s3://s3bucket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar .
 java -cp streaming-iceberg-ingest-1.0-SNAPSHOT.jar com.aws.emr.proto.kafka.producer.ProtoProducer kafkaBoostrapString
