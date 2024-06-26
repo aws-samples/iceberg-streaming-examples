@@ -85,9 +85,7 @@ Used schema in Glue Schema Registry
 ```
 ## CDC Scenarios
 
-Here the reference is tabular CDC best practices.
-
-blah blah blah
+Here the reference is tabular CDC best practices. **WIP**
 
 ## Requirements
 
@@ -106,9 +104,9 @@ You can generate the description file using the protobuf compiler like this. You
 
 ### Running on EMR Serverless:
 
+You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture.
 
---files
-Need to add the application....
+Then you can issue a job run using this aws cli command. Remember to change the desired parameters.
 
 ```aws emr-serverless start-job-run     --application-id 00fk8f0r28sb9t0p     --name iot-streaming     --execution-role-arn arn:aws:iam::378683551918:role/EMRServerlessS3RuntimeRole     --mode 'STREAMING'     --job-driver '{
         "sparkSubmit": {
