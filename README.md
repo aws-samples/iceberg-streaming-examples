@@ -104,11 +104,24 @@ You can generate the description file using the protobuf compiler like this. You
 
 ### Running on EMR Serverless:
 
+Create a S3 bucket with the following structure. 
+
+```
+s3bucket/
+	/jars
+	/protos.zip
+	/warehouse
+	/checkpoint
+```
+
+Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. 
+
 You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture.
 
 Then you can issue a job run using this aws cli command. Remember to change the desired parameters.
 
-```aws emr-serverless start-job-run     --application-id 00fk8f0r28sb9t0p     --name iot-streaming     --execution-role-arn arn:aws:iam::378683551918:role/EMRServerlessS3RuntimeRole     --mode 'STREAMING'     --job-driver '{
+```aws emr-serverless start-job-run     --application-id application-identifier     --name job-run-name     --execution-role-arn arn-of-emrserverless-role --mode 'STREAMING'     --job-driver
+	'{
         "sparkSubmit": {
             "entryPoint": "s3://big-data-demos-iceberg/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
             "entryPointArguments": ["false","s3://big-data-demos-iceberg/warehouse","s3://big-data-demos-iceberg/Employee.desc","s3://big-data-demos-iceberg/check","b-2.bigdata.msys1k.c9.kafka.eu-west-1.amazonaws.com:9092,b-1.bigdata.msys1k.c9.kafka.eu-west-1.amazonaws.com:9092","true"],
