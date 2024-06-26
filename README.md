@@ -28,7 +28,7 @@ Remember also that these jobs and code can be adapted for **batch mode** easily 
 Here we have different approaches and common formats. About the different scenarios the main idea is high throughput streaming
 ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
-- Custom process writing with compaction via n-batches and deduplication via merge into.
+- Custom process writing with compaction via n-batches and deduplication via merge into( to be implemented).
 
 For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios there.
 
@@ -100,7 +100,7 @@ You can generate the description file using the protobuf compiler like this. You
 
 ```protoc --include_imports --descriptor_set_out=Employee.desc Employee.proto'```
 
-**Remember that for simple scenarios you will be better suited using Kafka Connect Tabular Iceberg Connector or using Kinesis Firehose.**
+Remember that for simple scenarios you will be better suited using [Kafka Connect Tabular Iceberg Connector](https://github.com/tabular-io/iceberg-kafka-connect/tree/main) or using [Amazon Kinesis Firehose](https://aws.amazon.com/firehose/).
 
 ### Running on EMR Serverless:
 
