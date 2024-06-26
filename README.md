@@ -125,7 +125,7 @@ Then you can issue a job run using this aws cli command. Remember to change the 
 ```aws emr-serverless start-job-run     --application-id application-identifier     --name job-run-name     --execution-role-arn arn-of-emrserverless-role --mode 'STREAMING'     --job-driver
 	'{
         "sparkSubmit": {
-            "entryPoint": "s3://s3buccket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
+            "entryPoint": "s3://s3bucket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
             "entryPointArguments": ["false","s3://s3bucket/warehouse","s3://big-data-demos-iceberg/Employee.desc","s3://s3bucket/checkpoint","kafkaBootstrapString","true"],
             "sparkSubmitParameters": "--class com.aws.emr.spark.iot.SparkCustomIcebergIngest --conf spark.executor.cores=4 --conf spark.hadoop.hive.metastore.client.factory.class=com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory --conf spark.executor.memory=16g  --conf spark.driver.cores=4 --conf spark.driver.memory=8g --conf spark.dynamicAllocation.minExecutors=4 --conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.emr-serverless.executor.disk.type=shuffle_optimized --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
         }
