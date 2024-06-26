@@ -28,14 +28,14 @@ import static java.lang.System.currentTimeMillis;
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
- * @author acmanjon@amazon.com
+ * @author acmanjon @amazon.com
  */
-
 public class ProtoProducerSchemaRegistry {
     
-protected final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private String bootstrapServers="localhost:9094";
+protected final Logger logger = LoggerFactory.getLogger(getClass());
+private static String bootstrapServers =  "localhost:9092"; // by default localhost
+
     private static final SplittableRandom sr = new SplittableRandom();
 
     private Properties getProducerConfig() {
@@ -52,7 +52,13 @@ protected final Logger logger = LoggerFactory.getLogger(getClass());
         return props;
     }
 
-    public EmployeeOuterClass.Employee createEmployeeRecord(int employeeId) {
+    /**
+     * Create employee record employee outer class . employee.
+     *
+     * @param employeeId the employee id
+     * @return the employee outer class . employee
+     */
+public EmployeeOuterClass.Employee createEmployeeRecord(int employeeId) {
         Timestamp ts = fromMillis(currentTimeMillis());
         EmployeeOuterClass.Employee employee
                 = EmployeeOuterClass.Employee.newBuilder()
@@ -69,9 +75,14 @@ protected final Logger logger = LoggerFactory.getLogger(getClass());
         return employee;
     }
 
-    public void startProducer() throws InterruptedException {
+    /**
+     * Start producer.
+     *
+     * @throws InterruptedException the interrupted exception
+     */
+public void startProducer() throws InterruptedException {
         String topic = "protobuf-demo-topic";
-        KafkaProducer<String, EmployeeOuterClass.Employee> producer = new KafkaProducer<>(getProducerConfig());
+        try(KafkaProducer<String, EmployeeOuterClass.Employee> producer = new KafkaProducer<>(getProducerConfig())){
         logger.warn("Starting to send records...");
         int employeeId = 0;
         while (employeeId < 1000) {
@@ -81,6 +92,7 @@ protected final Logger logger = LoggerFactory.getLogger(getClass());
             producer.send(record, new ProducerCallback());
             employeeId++;
         }
+    }
     }
 
     private class ProducerCallback implements Callback {
@@ -100,7 +112,16 @@ protected final Logger logger = LoggerFactory.getLogger(getClass());
         }
     }
 
-    public static void main(String args[]) throws InterruptedException {
+    /**
+     * Main entry point
+     *
+     * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
+     * @throws InterruptedException the interrupted exception
+     */
+public static void main(String args[]) throws InterruptedException {
+        if(args.length == 1) {
+            bootstrapServers=args[0];
+        }
         ProtoProducerSchemaRegistry producer = new ProtoProducerSchemaRegistry();
         producer.startProducer();
     }

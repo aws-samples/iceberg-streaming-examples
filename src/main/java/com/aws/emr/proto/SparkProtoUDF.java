@@ -12,8 +12,24 @@ import static org.apache.spark.sql.functions.col;
 import java.io.IOException;
 import java.util.concurrent.TimeoutException;
 
+/**
+ *
+ * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg using a Spark UDF
+ * to make the "translation"
+ *
+ * @author acmanjon@amazon.com
+ */
+
 public class SparkProtoUDF {
 
+  /**
+   * The entry point of application.
+   *
+   * @param args the input arguments
+   * @throws IOException the io exception
+   * @throws TimeoutException the timeout exception
+   * @throws StreamingQueryException the streaming query exception
+   */
   public static void main(String[] args)
       throws IOException, TimeoutException, StreamingQueryException {
     SparkSession spark =
@@ -21,9 +37,6 @@ public class SparkProtoUDF {
             .master("local[*]")
             .appName("JavaIoTProtoBufDescriptor2Iceberg")
             .getOrCreate();
-
-    // in production you should configure this via env or spark configs
-    spark.sparkContext().setLogLevel("WARN");
 
     spark
         .udf()
@@ -44,7 +57,7 @@ public class SparkProtoUDF {
         spark
             .readStream()
             .format("kafka")
-            .option("kafka.bootstrap.servers", "localhost:9094")
+            .option("kafka.bootstrap.servers", "localhost:9092")
             .option("subscribe", "protobuf-demo-topic-pure")
             // .option("startingOffsets","latest")
             .load();

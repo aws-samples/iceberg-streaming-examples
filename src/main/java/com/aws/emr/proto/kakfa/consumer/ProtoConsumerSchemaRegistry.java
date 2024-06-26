@@ -17,14 +17,30 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 
-
+/**
+ *
+ *
+ * A Kafka consumer implemented in Java  using the Glue Schema Registry consuming Protocol Buffers
+ *
+ * @author acmanjon@amazon.com
+ */
 public class ProtoConsumerSchemaRegistry {
 
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(ProtoConsumerSchemaRegistry.class);
 
-    private String bootstrapServers="localhost:9094";
+    private static String bootstrapServers="localhost:9092";
+
+    /**
+     *
+     * The entry point of application.
+     *
+     * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
+     */
 
     public static void main(String args[]){
+        if(args.length == 1) {
+            bootstrapServers=args[0];
+        }
         ProtoConsumerSchemaRegistry consumer = new ProtoConsumerSchemaRegistry();
         consumer.startConsumer();
     }
@@ -41,7 +57,8 @@ public class ProtoConsumerSchemaRegistry {
         return props;
     }
 
-    public void startConsumer() {
+  /** Start consumer. */
+  public void startConsumer() {
         log.info("starting consumer...");
         String topic = "protobuf-demo-topic";
             try (KafkaConsumer<String, EmployeeOuterClass.Employee> consumer  = new KafkaConsumer<>(getConsumerConfig())){

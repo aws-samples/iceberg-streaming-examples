@@ -2,9 +2,7 @@ package com.aws.emr.proto.kafka.producer;
 
 import java.util.Properties;
 import java.util.SplittableRandom;
-import java.util.concurrent.TimeUnit;
 
-import com.aws.emr.proto.kakfa.consumer.ProtoConsumer;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import gsr.proto.post.EmployeeOuterClass;
@@ -16,8 +14,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.logging.log4j.LogManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.google.protobuf.util.Timestamps.fromMillis;
 import static java.lang.System.currentTimeMillis;
@@ -28,14 +24,32 @@ import static java.lang.System.currentTimeMillis;
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
- * @author acmanjon@amazon.com
+ * @author acmanjon @amazon.com
  */
 public class ProtoProducer {
 
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(ProtoProducer.class);
 
     private static final SplittableRandom sr = new SplittableRandom();
-    protected static String bootstrapServers="localhost:9092";
+    /**
+     * The constant bootstrapServers.
+     */
+protected static String bootstrapServers="localhost:9092"; // by default localhost
+
+    /**
+     * Main entry point.
+     *
+     * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
+     * @throws InterruptedException the interrupted exception
+     */
+public static void main(String args[]) throws InterruptedException {
+        if(args.length == 1) {
+            bootstrapServers=args[0];
+        }
+        log.warn("Kafka bootstrap servers are set to "+bootstrapServers);
+        ProtoProducer producer = new ProtoProducer();
+        producer.startProducer();
+    }
 
     private Properties getProducerConfig() {
         Properties props = new Properties();
@@ -45,7 +59,12 @@ public class ProtoProducer {
         return props;
     }
 
-    public EmployeeOuterClass.Employee createEmployeeRecord() {
+    /**
+     * Create employee record employee outer class . employee.
+     *
+     * @return the employee outer class . employee
+     */
+public EmployeeOuterClass.Employee createEmployeeRecord() {
         Timestamp ts = fromMillis(currentTimeMillis());
         EmployeeOuterClass.Employee employee
                 = EmployeeOuterClass.Employee.newBuilder()
@@ -62,29 +81,37 @@ public class ProtoProducer {
         return employee;
     }
 
-    public void startProducer() throws InterruptedException {
+    /**
+     * Start producer.
+     *
+     * @throws InterruptedException the interrupted exception
+     */
+public void startProducer() throws InterruptedException {
         String topic = "protobuf-demo-topic-pure";
-        KafkaProducer<String, byte[]> producer = new KafkaProducer<>(getProducerConfig());
-        log.warn("Starting to send records...");
-        int count = 1;
-        int throttle = 0;
-        while (true) {
-            if(count % 100000000 == 0){
-                log.warn("100 million messages produced... ");
-            }
-            EmployeeOuterClass.Employee person = createEmployeeRecord();
-            // for kafka key specification, not used in this example
-            // String key = "key-" + employeeId;
-            ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, person.toByteArray());
-            producer.send(record, new ProducerCallback());
-            count++;
-            throttle++;
-            // if you want to really push just comment this block,
-           // if (throttle % 70000 == 0) {
-           // TimeUnit.MILLISECONDS.sleep(400); //about 20.000 msg/seg
-           // }
+
+        try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(getProducerConfig())){
+      log.warn("Starting to send records...");
+      int count = 1;
+      int throttle = 0;
+      while (true) {
+        if (count % 100000000 == 0) {
+          log.warn("100 million messages produced... ");
         }
+        EmployeeOuterClass.Employee person = createEmployeeRecord();
+        // for kafka key specification, not used in this example
+        // String key = "key-" + employeeId;
+        ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, person.toByteArray());
+        producer.send(record, new ProducerCallback());
+        count++;
+        throttle++;
+        // if you want to really push just un-comment this block
+
+        /* if (throttle % 70000 == 0) {
+        TimeUnit.MILLISECONDS.sleep(400); //about 20.000 msg/seg
+        }*/
+      }
     }
+  }
 
     private class ProducerCallback implements Callback {
 
@@ -101,15 +128,6 @@ public class ProtoProducer {
                 e.printStackTrace();
             }
         }
-    }
-
-    public static void main(String args[]) throws InterruptedException {
-        if(args.length == 1) {
-            bootstrapServers=args[0];
-        }
-        log.warn("Kafka bootstrap servers are set to "+bootstrapServers);
-        ProtoProducer producer = new ProtoProducer();
-        producer.startProducer();
     }
 
 }

@@ -19,7 +19,7 @@ import software.amazon.awssdk.services.glue.model.DataFormat;
 
 /**
  *
- * A multithreaded Kafka Java Producer implemented in Java producing Proto messages using Glue Schema Registry
+ * A Kafka Java Producer implemented in Java producing Proto messages using Glue Schema Registry
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
@@ -30,7 +30,7 @@ public class ProtoProducerSchemaRegistry {
     
 protected final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private String bootstrapServers="localhost:9094";
+    private String bootstrapServers="localhost:9092";
 
     private Properties getProducerConfig() {
         Properties props = new Properties();

@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  *
- * A  Kafka Java Producer implemented in Java producing Proto messages.
+ * A Kafka Java Producer implemented in Java producing Proto messages.
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
@@ -31,7 +31,7 @@ public class ProtoProducer {
 
     protected static final Logger logger = LoggerFactory.getLogger(ProtoProducer.class);
     private static final SplittableRandom sr = new SplittableRandom();
-    protected static String bootstrapServers="localhost:9094";
+    protected static String bootstrapServers="localhost:9092";
 
 
 
