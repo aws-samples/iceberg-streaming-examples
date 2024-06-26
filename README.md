@@ -135,11 +135,11 @@ Then you can issue a job run using this aws cli command. Remember to change the 
 
 Expected performance should be around 450.000 msgs per sec if you use the ```EXAMPLE``` without merge deduplication.
 
-<img src="imgs/emr_performance.png" align="center" height="500" width="600"/>
+<img src="imgs/emr_performance.png" align="center" height="450" width="600"/>
 
 You can also see the cluster autoscaling into action:
 
-<img src="imgs/emr_cluster_autoscaling.png" align="center" height="520" width="550"/>
+<img src="imgs/emr_cluster_autoscaling.png" align="center" height="470" width="550"/>
 
 ### Running on a local environment.
 
