@@ -13,7 +13,7 @@ The example uses maven profiles to automatically filter required libraries when 
 
 **Environment types:** 
 
-- Local development using a dockerized Kafka.
+- Local development using a [dockerized Kafka](https://github.com/bitnami/containers/blob/main/bitnami/kafka/).
 - Local development against Amazon S3, and AWS Glue Catalog, here we will also use the dockerized Kafka.
 - Production mode where we can deploy the code to an Amazon EMR Serverless cluster.
 
