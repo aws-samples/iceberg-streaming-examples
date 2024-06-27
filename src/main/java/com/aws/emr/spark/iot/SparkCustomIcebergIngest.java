@@ -4,6 +4,7 @@ import static org.apache.spark.sql.functions.*;
 import static org.apache.spark.sql.protobuf.functions.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -35,7 +36,7 @@ public class SparkCustomIcebergIngest {
 
   private static final Logger log = LogManager.getLogger(SparkCustomIcebergIngest.class);
   private static String master = "";
-  private static boolean removeDuplicates = false;
+  private static boolean removeDuplicates = true;
   private static String protoDescFile = "Employee.desc";
   private static String icebergWarehouse = "warehouse/";
   private static String checkpointDir = "tmp/";
@@ -57,7 +58,6 @@ public class SparkCustomIcebergIngest {
           "Iceberg warehouse dir will be 'warehouse/' from the run dir  and the checkpoint directory will be 'tmp/'\n"
               + " this mode is for local based execution and development. Kafka broker in this case will also be 'localhost:9092'."
               + " Remember to clean the checkpoint dir for any changes or if you want to start 'clean'");
-      removeDuplicates = false;
       spark =
           SparkSession.builder()
               .master(master)
@@ -233,29 +233,37 @@ USE bigdata;
                     (dataframe, batchId) -> {
                       log.warn("Writing batch {}", batchId);
                       if (removeDuplicates) {
-                        // first we want to filter affected partitions for filtering
-                        var partitions =
-                            dataframe
-                                .select(col("start_date"), col("team"), col("employee_id"))
-                                .withColumn("day", date_trunc("day", col("start_date")))
-                                .withColumn("hour", date_trunc("hour", col("start_date")))
-                                .select(col("employee_id"), col("day"), col("hour"), col("team"))
-                                .dropDuplicates();
-                        var listPartitions = partitions.collectAsList();
-                        log.warn("Affected partitions: {}", partitions.count());
-                        // partitions=
-                        // .dropDuplicates()
-                        // .collectAsList();
-
-                        log.warn("Partitions to merge: {}", partitions);
+                        dataframe.createOrReplaceTempView("insert_data");
+                        // here we are pushing some filters like the team and the date (we know that
+                        // we will have late events from hour ago....
+                        // we could improve this filtering by bucket and just merge data from that
+                        // bucket ( using 8 merge queries), one per bucket. Iceberg bucketing  can be calculated via
+                        // 'system.bucket(8,employee_id)'
+                        // t.employee_id in (1,2,3,...) or t.employee_id in (7,8,9,....)
+                        // in each in you can put 1000 values.
+                        // another way is to generate a column for the bucket and then make the join/ON there
+                        // this one maybe be easier instead of generate that long in(1,3,4,5,6....) list,
+                        // the problem is that you wouldn't able to use INSERT *
+                        String merge =
+                            """
+                                  MERGE INTO bigdata.EMPLOYEE as t
+                                  USING  insert_data as s
+                                  ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
+                                  AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
+                                  WHEN NOT MATCHED THEN INSERT *
+                                  """;
+                        dataframe.sparkSession().sql((merge));
                       } else {
                         dataframe.write().insertInto("bigdata.employee");
                       }
                       if (compactionEnabled) {
-                        // the main idea behind this is in cases where you may have receiving "late data randomly and
+                        // the main idea behind this is in cases where you may have receiving "late
+                        // data randomly and
                         // doing the compaction jobs with optimistic concurrency will lead into a
-                        // lot of conflicts where you could increase the number of retries ( as we are using partial
-                        // progress we need to increase the commit retries though), or you can just use this
+                        // lot of conflicts where you could increase the number of retries ( as we
+                        // are using partial
+                        // progress we need to increase the commit retries though), or you can just
+                        // use this
                         // strategy for compaction, older partitions on each N batches.
                         if (batchId % 10 == 0) {
                           log.warn("\nCompaction in progress:\n");
@@ -273,15 +281,15 @@ USE bigdata;
                                       'max-file-group-size-bytes','10737418240',
                                       'partial-progress.enabled', 'true',
                                       'max-concurrent-file-group-rewrites', '10000',
-                                      'partial-progress.max-commits', '10'                                   
+                                      'partial-progress.max-commits', '10'
                                     ))
                                     """)
                               .show();
                         }
-                          // rewrite manifests from time to time
-                          log.warn("\nManifest compaction in progress:\n");
-                          if (batchId % 30 == 0) {
-                            spark
+                        // rewrite manifests from time to time
+                        log.warn("\nManifest compaction in progress:\n");
+                        if (batchId % 30 == 0) {
+                          spark
                               .sql(
                                   """
                                       CALL system.rewrite_manifests(
