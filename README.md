@@ -30,12 +30,14 @@ ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
 - Custom process writing with compaction via n-batches and deduplication via merge into( to be implemented).
 
-For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios there.
+For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios.
+
+The most advanced example using Protocol Buffers is in ```com.aws.emr.spark.iot``` package.
+
+Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run. 
+An example of such approach can be seen also on the Utils class of ```com.aws.emr.spark.iot``` package.
 
 Remember that exactly once systems are difficult to implement and that for Spark you will need and idempotent sink.
-
-Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run.
-An example of such approach can be seen also on the utils package.
 
 If you want to use the GlueSchemaRegistry you should create in the console a stream registry named ```employee-schema-registry```.
 
@@ -106,10 +108,11 @@ Create a schema for the Glue registry ```Employee.avsc``` if you like to use the
 
 ### Json
 
+There is plenty of literature over the internet on how integrate Spark with Json data, therefore we just implemented one usecase.
+
 **Examples**:
-- Native Java Producer/Consumer.
 - AWS Glue Registry based Java Producer/Consumer.
-- Native Spark Structured streaming consumer.
+
 
 Create a schema for the Glue registry ```Employee.json``` if you like to use the Registry based producer/consumer:
 ```
