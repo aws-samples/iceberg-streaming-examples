@@ -19,7 +19,7 @@ import org.apache.spark.sql.streaming.Trigger;
 /**
  *
  * A Spark Structured Streaming consumer implemented in Java that decodes Protocol Buffers using the native spark connectors
- * with the option to inject the hex for the despcriptor file.
+ * with the option to inject the hex for the descriptor file.
  *
  * @author acmanjon@amazon.com
  */
