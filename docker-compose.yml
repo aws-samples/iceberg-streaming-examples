@@ -12,7 +12,7 @@ services:
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_NUM_PARTITIONS=8 # remember that the number of partitions will be mapped to consumers in Spark to read in parallel∫
+      - KAFKA_CFG_NUM_PARTITIONS=8 # remember that the number of partitions will be mapped to consumers in Spark to read in parallel
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_CFG_LOG_RETENTION_MS=1200000
       - KAFKA_CFG_LOG_RETENTION_CHECK_INTERVAL_MS=1800000

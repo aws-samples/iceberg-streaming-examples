@@ -44,10 +44,9 @@ private static String bootstrapServers =  "localhost:9092"; // by default localh
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaSerializer.class.getName());
         props.put(AWSSchemaRegistryConstants.DATA_FORMAT, DataFormat.PROTOBUF.name());
-        props.put(AWSSchemaRegistryConstants.AWS_REGION, "us-east-1");
+        props.put(AWSSchemaRegistryConstants.AWS_REGION, "eu-west-1");
         props.put(AWSSchemaRegistryConstants.REGISTRY_NAME, "employee-schema-registry");
-        props.put(AWSSchemaRegistryConstants.SCHEMA_NAME, "Employee");
-
+        props.put(AWSSchemaRegistryConstants.SCHEMA_NAME, "Employee.proto");
         props.put(AWSSchemaRegistryConstants.PROTOBUF_MESSAGE_TYPE, ProtobufMessageType.POJO.getName());
         return props;
     }

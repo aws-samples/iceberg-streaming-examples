@@ -50,10 +50,10 @@ public class ProtoConsumerSchemaRegistry {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "protobuf");
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"latest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaDeserializer.class.getName());
-        props.put(AWSSchemaRegistryConstants.AWS_REGION,"us-east-1");
+        props.put(AWSSchemaRegistryConstants.AWS_REGION,"eu-west-1");
         props.put(AWSSchemaRegistryConstants.PROTOBUF_MESSAGE_TYPE, ProtobufMessageType.POJO.getName());
         return props;
     }

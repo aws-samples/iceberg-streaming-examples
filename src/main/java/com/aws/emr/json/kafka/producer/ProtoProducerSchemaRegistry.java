@@ -3,6 +3,7 @@ package com.aws.emr.json.kafka.producer;
 import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafkaSerializer;
 import com.amazonaws.services.schemaregistry.utils.AWSSchemaRegistryConstants;
 import com.amazonaws.services.schemaregistry.utils.ProtobufMessageType;
+import com.aws.emr.avro.kafka.producer.AvroProducer;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import gsr.proto.post.EmployeeOuterClass;
@@ -13,8 +14,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
 import software.amazon.awssdk.services.glue.model.DataFormat;
 
 /**
@@ -27,8 +27,8 @@ import software.amazon.awssdk.services.glue.model.DataFormat;
  */
 
 public class ProtoProducerSchemaRegistry {
-    
-protected final Logger logger = LoggerFactory.getLogger(getClass());
+
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(ProtoProducerSchemaRegistry.class);
 
     private String bootstrapServers="localhost:9092";
 

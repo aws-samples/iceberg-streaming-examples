@@ -37,6 +37,8 @@ Remember that exactly once systems are difficult to implement and that for Spark
 Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run.
 An example of such approach can be seen also on the utils package.
 
+If you want to use the GlueSchemaRegistry you should create in the console a stream registry named ```employee-schema-registry```.
+
 ### Protocol Buffers
 
 [Protocol Buffers](https://protobuf.dev/) are language-neutral, platform-neutral extensible mechanisms for serializing structured data.
@@ -47,6 +49,36 @@ An example of such approach can be seen also on the utils package.
 - Native Spark Structured streaming consumer. 
 - UDF based Spark Structured streaming consumer.
 
+Create a schema for the Glue registry ```Employee.proto``` if you like to use the Registry based producer/consumer:
+
+```
+syntax = "proto3";
+package gsr.proto.post;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+message Employee {
+      int32 id = 1;
+      string name = 2;
+      string address = 3;
+      google.protobuf.Int32Value employee_age = 4;
+      google.protobuf.Timestamp start_date = 5;
+     Team team = 6;
+     Role role = 7;
+
+}
+message Team {
+     string name = 1;
+     string location = 2;
+}
+enum Role {
+     MANAGER = 0;
+     DEVELOPER = 1;
+     ARCHITECT = 2;
+}
+```
+
 ### Apache Avro
 
 [Apache Avro](https://avro.apache.org/) - a data serialization system.
@@ -56,7 +88,28 @@ An example of such approach can be seen also on the utils package.
 - AWS Glue Registry based Java Producer/Consumer.
 - Native Spark Structured streaming consumer. 
 
+Create a schema for the Glue registry ```Employee.avsc``` if you like to use the Registry based producer/consumer:
+```
+{"namespace": "gsr.avro.post",
+ "type": "record",
+ "name": "Employee",
+ "fields": [
+     {"name": "employee_id", "type": "long"},
+     {"name": "age",  "type": "int"},
+     {"name": "start_date",   "type": "long"},
+   {"name": "team", "type": "string"},
+   {"name": "role", "type": "string"},
+   {"name": "address", "type": "string"},
+   {"name": "name", "type": "string"}]
+}
+```
+
 ### Json
+
+**Examples**:
+- Native Java Producer/Consumer.
+- AWS Glue Registry based Java Producer/Consumer.
+- Native Spark Structured streaming consumer.
 
 Used schema in Glue Schema Registry
 ```

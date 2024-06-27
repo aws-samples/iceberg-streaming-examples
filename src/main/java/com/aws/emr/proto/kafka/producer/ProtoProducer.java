@@ -24,7 +24,7 @@ import static java.lang.System.currentTimeMillis;
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
- * @author acmanjon @amazon.com
+ * @author acmanjon@amazon.com
  */
 public class ProtoProducer {
 

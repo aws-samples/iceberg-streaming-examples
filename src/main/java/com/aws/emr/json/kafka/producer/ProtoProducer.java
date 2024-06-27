@@ -1,5 +1,6 @@
 package com.aws.emr.json.kafka.producer;
 
+import com.aws.emr.avro.kafka.producer.AvroProducer;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import gsr.proto.post.EmployeeOuterClass;
@@ -15,8 +16,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
 
 /**
  *
@@ -29,7 +29,9 @@ import org.slf4j.LoggerFactory;
 
 public class ProtoProducer {
 
-    protected static final Logger logger = LoggerFactory.getLogger(ProtoProducer.class);
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(ProtoProducer.class);
+
+
     private static final SplittableRandom sr = new SplittableRandom();
     protected static String bootstrapServers="localhost:9092";
 
