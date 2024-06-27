@@ -24,6 +24,7 @@ import org.apache.logging.log4j.LogManager;
  *
  * @author acmanjon@amazon.com
  */
+
 public class ProtoConsumerSchemaRegistry {
 
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(ProtoConsumerSchemaRegistry.class);

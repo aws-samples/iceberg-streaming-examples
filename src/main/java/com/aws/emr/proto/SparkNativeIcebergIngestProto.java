@@ -1,4 +1,4 @@
-package com.aws.emr.spark.iot;
+package com.aws.emr.proto;
 
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.protobuf.functions.*;
@@ -14,9 +14,9 @@ import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
-public class SparkNativeIcebergIngest {
+public class SparkNativeIcebergIngestProto {
 
-  private static final Logger log = LogManager.getLogger(SparkNativeIcebergIngest.class);  private static String master = "";
+  private static final Logger log = LogManager.getLogger(SparkNativeIcebergIngestProto.class);  private static String master = "";
 
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
