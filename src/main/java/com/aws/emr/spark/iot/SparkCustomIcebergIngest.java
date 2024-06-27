@@ -17,6 +17,19 @@ import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
+/**
+ *
+ * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg using the native
+ * data source and writing via custom Spark/Iceberg writing mechanism
+ *
+ * This implements all the features and mechanisms that we want to be demostrated.
+ *
+ * Watermark deduplication
+ * Compaction
+ * MERGE INTO Deduplication
+ *
+ * @author acmanjon@amazon.com
+ */
 
 public class SparkCustomIcebergIngest {
 
@@ -24,8 +37,8 @@ public class SparkCustomIcebergIngest {
   private static String master = "";
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
-  private static String icebergWarehouse = "src/main/resources/iot_data.pb";
-  private static String checkpointDir = "src/main/resources/iot_data.pb";
+  private static String icebergWarehouse = "warehouse/";
+  private static String checkpointDir = "tmp/";
   private static String bootstrapServers = "localhost:9092";
   private static boolean compactionEnabled = false;
 
@@ -196,7 +209,7 @@ USE bigdata;
                 .load();
     
         Dataset<Row> output =
-            df.select(from_protobuf(col("value"),"Employee", "Employee.desc").as("Employee"))
+            df.select(from_protobuf(col("value"),"Employee", protoDescFile).as("Employee"))
                 .select(col("Employee.*"))
                 .select(
                     col("id").as("employee_id"),

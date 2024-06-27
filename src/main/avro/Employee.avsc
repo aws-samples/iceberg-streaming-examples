@@ -4,12 +4,7 @@
  "fields": [
      {"name": "employee_id", "type": "long"},
      {"name": "age",  "type": "int"},
-     {"name": "start_date",
-       "type": {
-       "type": "long",
-       "logicalType": "timestamp-millis"
-       }
-     },
+     {"name": "start_date",   "type": "long"},
    {"name": "team", "type": "string"},
    {"name": "role", "type": "string"},
    {"name": "address", "type": "string"},

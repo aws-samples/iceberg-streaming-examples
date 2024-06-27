@@ -95,8 +95,14 @@ public class SparkNativeIcebergIngestJson {
     }
 
 
-    // in production you should configure this via env, spark configs or log4j
-    spark.sparkContext().setLogLevel("WARN");
+    spark.sql("""
+CREATE DATABASE IF NOT EXISTS bigdata;
+""");
+
+
+    spark.sql("""
+USE bigdata;
+""");
 
     spark.sql(
         """

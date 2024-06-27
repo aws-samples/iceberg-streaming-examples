@@ -18,7 +18,6 @@ import org.apache.spark.sql.streaming.Trigger;
 
 /**
  *
- *
  * A Spark Structured Streaming consumer implemented in Java that decodes Protocol Buffers using the native spark connectors
  * with the option to inject the hex for the despcriptor file.
  *
@@ -31,8 +30,8 @@ public class SparkCustomIcebergIngestProtoHex {
   private static String master = "";
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
-  private static String icebergWarehouse = "src/main/resources/iot_data.pb";
-  private static String checkpointDir = "src/main/resources/iot_data.pb";
+  private static String icebergWarehouse = "warehouse/";
+  private static String checkpointDir = "tmp/";
   private static String bootstrapServers = "localhost:9092";
   private static boolean compactionEnabled = false;
 
@@ -163,10 +162,16 @@ public class SparkCustomIcebergIngestProtoHex {
       System.exit(1);
     }
 
+    spark.sql(
+            """
+    CREATE DATABASE IF NOT EXISTS bigdata;
+    """);
 
-    spark.sql("""
-USE bigdata;
-""");
+    spark.sql(
+            """
+    USE bigdata;
+    """);
+
     spark.sql(
             """
                     CREATE TABLE IF NOT EXISTS employee
