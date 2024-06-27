@@ -4,17 +4,32 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Employee {
     @JsonProperty
-    public String firstName;
+    private int employeeId;
 
     @JsonProperty
-    public String lastName;
-
-    @JsonProperty
-    public short age;
+    private String name;
 
     public Employee() {}
 
-    public Employee(String firstName, String lastName, short age) {
-      //  this(firstName, lastName, age, null);
+    public Employee(int employeeId, String name) {
+        this.setEmployeeId(employeeId);
+        this.setName(name);
+    }
+
+    public int getEmployeeId() {
+        return employeeId;
+    }
+
+    public void setEmployeeId(int employeeId) {
+        this.employeeId = employeeId;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }
+

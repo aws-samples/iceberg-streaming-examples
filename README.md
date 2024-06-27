@@ -111,28 +111,24 @@ Create a schema for the Glue registry ```Employee.avsc``` if you like to use the
 - AWS Glue Registry based Java Producer/Consumer.
 - Native Spark Structured streaming consumer.
 
-Used schema in Glue Schema Registry
+Create a schema for the Glue registry ```Employee.json``` if you like to use the Registry based producer/consumer:
 ```
 {
-	"$id": "https://example.com/person.schema.json",
-	"$schema": "http://json-schema.org/draft-07/schema#",
-	"title": "Person",
-	"type": "object",
-	"properties": {
-		"firstName": {
-			"type": "string",
-			"description": "The person's first name."
-		},
-		"lastName": {
-			"type": "string",
-			"description": "The person's last name."
-		},
-		"age": {
-			"description": "Age in years which must be equal to or greater than zero.",
-			"type": "integer",
-			"minimum": 0
-		}
-	}
+  "$id": "https://example.com/Employee.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Employee",
+  "description": "",
+  "type": "object",
+  "properties": {
+    "employeeId": {
+      "description": "The unique identifier for a employee",
+      "type": "integer"
+    },
+    "name": {
+      "description": "Name of the employee",
+      "type": "string"
+    }
+  }
 }
 
 ```

@@ -1,6 +1,5 @@
 package com.aws.emr.json.kafka.consumer;
 
-import com.aws.emr.avro.kafka.producer.AvroProducer;
 import com.google.protobuf.InvalidProtocolBufferException;
 import gsr.proto.post.EmployeeOuterClass;
 import java.time.Duration;
@@ -15,21 +14,21 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 
-public class ProtoConsumer {
+public class JsonConsumer {
 
-    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(ProtoConsumer.class);
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(JsonConsumer.class);
 
     private String bootstrapServers="localhost:9092";
 
     public static void main(String args[]) throws InvalidProtocolBufferException {
-        ProtoConsumer consumer = new ProtoConsumer();
+        JsonConsumer consumer = new JsonConsumer();
         consumer.startConsumer();
     }
 
     private Properties getConsumerConfig() {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "protobuf-pure");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "json-pure");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
@@ -38,7 +37,7 @@ public class ProtoConsumer {
 
     public void startConsumer() {
         logger.info("starting consumer...");
-        String topic = "protobuf-demo-topic-pure";
+        String topic = "json-demo-topic-pure";
         try(KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(getConsumerConfig())){
         consumer.subscribe(Collections.singletonList(topic));
 

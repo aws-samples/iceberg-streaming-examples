@@ -1,6 +1,5 @@
 package com.aws.emr.json.kafka.producer;
 
-import com.aws.emr.avro.kafka.producer.AvroProducer;
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
 import gsr.proto.post.EmployeeOuterClass;
@@ -20,16 +19,16 @@ import org.apache.logging.log4j.LogManager;
 
 /**
  *
- * A Kafka Java Producer implemented in Java producing Proto messages.
+ * A Kafka Java Producer implemented in Java producing Json messages.
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
  * @author acmanjon@amazon.com
  */
 
-public class ProtoProducer {
+public class JsonProducer {
 
-    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(ProtoProducer.class);
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(JsonProducer.class);
 
 
     private static final SplittableRandom sr = new SplittableRandom();
@@ -100,7 +99,7 @@ public class ProtoProducer {
             bootstrapServers=args[0];
         }
         logger.warn("Kafka bootstrap servers are set to "+bootstrapServers);
-        ProtoProducer producer = new ProtoProducer();
+        JsonProducer producer = new JsonProducer();
         producer.startProducer();
     }
 

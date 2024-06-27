@@ -1,10 +1,9 @@
 package com.aws.emr.json.kafka.consumer;
 
 import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer;
+import com.amazonaws.services.schemaregistry.serializers.json.JsonDataWithSchema;
 import com.amazonaws.services.schemaregistry.utils.AWSSchemaRegistryConstants;
-import com.amazonaws.services.schemaregistry.utils.ProtobufMessageType;
-import com.aws.emr.avro.kafka.producer.AvroProducer;
-import gsr.proto.post.EmployeeOuterClass;
+import com.aws.emr.json.kafka.Employee;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -16,14 +15,14 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 
-public class ProtoConsumerSchemaRegistry {
+public class JsonConsumerSchemaRegistry {
 
-    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(ProtoConsumerSchemaRegistry.class);
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(JsonConsumerSchemaRegistry.class);
 
-    private String bootstrapServers="localhost:9094";
+    private String bootstrapServers="localhost:9092";
 
     public static void main(String args[]){
-        ProtoConsumerSchemaRegistry consumer = new ProtoConsumerSchemaRegistry();
+        JsonConsumerSchemaRegistry consumer = new JsonConsumerSchemaRegistry();
         consumer.startConsumer();
     }
 
@@ -34,21 +33,20 @@ public class ProtoConsumerSchemaRegistry {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaDeserializer.class.getName());
-        props.put(AWSSchemaRegistryConstants.AWS_REGION,"us-east-1");
+        props.put(AWSSchemaRegistryConstants.AWS_REGION,"eu-west-1");
         return props;
     }
 
     public void startConsumer() {
         logger.info("starting consumer...");
-        String topic = "protobuf-demo-topic";
-            try (KafkaConsumer<String, EmployeeOuterClass.Employee> consumer  = new KafkaConsumer<>(getConsumerConfig())){
+        String topic = "json-demo-topic";
+            try (KafkaConsumer<String, JsonDataWithSchema> consumer  = new KafkaConsumer<>(getConsumerConfig())){
         consumer.subscribe(Collections.singletonList(topic));
         while (true) {
-            final ConsumerRecords<String, EmployeeOuterClass.Employee> records = consumer.poll(Duration.ofMillis(1000));
-            for (final ConsumerRecord<String, EmployeeOuterClass.Employee> record : records) {
-                final EmployeeOuterClass.Employee employee = record.value();
-                logger.warn("Employee Id: " + employee.getId() + " | Name: " + employee.getName() + " | Address: " + employee.getAddress() +
-                        " | Age: " + employee.getEmployeeAge().getValue() + " | Startdate: " + employee.getStartDate().getSeconds());
+            final ConsumerRecords<String, JsonDataWithSchema> records = consumer.poll(Duration.ofMillis(1000));
+            for (final ConsumerRecord<String, JsonDataWithSchema> record : records) {
+                JsonDataWithSchema value = record.value();
+                logger.warn("Employee: " + value.getPayload());
             }
         }
     }catch (Exception e) {
