@@ -323,7 +323,7 @@ USE bigdata;
                     })
             .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
             .option("fanout-enabled", "true") // disable ordering
-            .option("checkpointLocation", checkpointDir) // on local mode connected to glue disable it
+            .option("checkpointLocation", checkpointDir) // on local mode connected to glue disable it or add hadoop-aws library to add S3 file api .
             .start();
     query.awaitTermination();
       }
