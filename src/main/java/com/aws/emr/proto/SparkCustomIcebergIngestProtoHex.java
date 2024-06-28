@@ -1,15 +1,12 @@
-package com.aws.emr.spark.iot;
+package com.aws.emr.proto;
 
 import static org.apache.spark.sql.functions.*;
 import static org.apache.spark.sql.protobuf.functions.*;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import com.aws.emr.avro.kafka.SparkNativeIcebergIngestAvro;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.api.java.function.VoidFunction2;
@@ -18,32 +15,27 @@ import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
+
 /**
  *
- * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg using the native
- * data source and writing via custom Spark/Iceberg writing mechanism
- *
- * This implements all the features and mechanisms that we want to be demostrated.
- *
- * Watermark deduplication
- * Compaction
- * MERGE INTO Deduplication
+ * A Spark Structured Streaming consumer implemented in Java that decodes Protocol Buffers using the native spark connectors
+ * with the option to inject the hex for the descriptor file.
  *
  * @author acmanjon@amazon.com
- *
  */
 
-public class SparkCustomIcebergIngest {
+public class SparkCustomIcebergIngestProtoHex {
 
-  private static final Logger log = LogManager.getLogger(SparkCustomIcebergIngest.class);
+  private static final Logger log = LogManager.getLogger(SparkCustomIcebergIngestProtoHex.class);
   private static String master = "";
-  private static boolean removeDuplicates = true;
+  private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
   private static String icebergWarehouse = "warehouse/";
   private static String checkpointDir = "tmp/";
   private static String bootstrapServers = "localhost:9092";
   private static boolean compactionEnabled = false;
 
+  private static String hexData="0A86040A1E676F6F676C652F70726F746F6275662F77726170706572732E70726F746F120F676F6F676C652E70726F746F62756622230A0B446F75626C6556616C756512140A0576616C7565180120012801520576616C756522220A0A466C6F617456616C756512140A0576616C7565180120012802520576616C756522220A0A496E74363456616C756512140A0576616C7565180120012803520576616C756522230A0B55496E74363456616C756512140A0576616C7565180120012804520576616C756522220A0A496E74333256616C756512140A0576616C7565180120012805520576616C756522230A0B55496E74333256616C756512140A0576616C756518012001280D520576616C756522210A09426F6F6C56616C756512140A0576616C7565180120012808520576616C756522230A0B537472696E6756616C756512140A0576616C7565180120012809520576616C756522220A0A427974657356616C756512140A0576616C756518012001280C520576616C75654283010A13636F6D2E676F6F676C652E70726F746F627566420D577261707065727350726F746F50015A31676F6F676C652E676F6C616E672E6F72672F70726F746F6275662F74797065732F6B6E6F776E2F77726170706572737062F80101A20203475042AA021E476F6F676C652E50726F746F6275662E57656C6C4B6E6F776E5479706573620670726F746F330AFF010A1F676F6F676C652F70726F746F6275662F74696D657374616D702E70726F746F120F676F6F676C652E70726F746F627566223B0A0954696D657374616D7012180A077365636F6E647318012001280352077365636F6E647312140A056E616E6F7318022001280552056E616E6F734285010A13636F6D2E676F6F676C652E70726F746F627566420E54696D657374616D7050726F746F50015A32676F6F676C652E676F6C616E672E6F72672F70726F746F6275662F74797065732F6B6E6F776E2F74696D657374616D707062F80101A20203475042AA021E476F6F676C652E50726F746F6275662E57656C6C4B6E6F776E5479706573620670726F746F330AEE030A0E456D706C6F7965652E70726F746F120E6773722E70726F746F2E706F73741A1E676F6F676C652F70726F746F6275662F77726170706572732E70726F746F1A1F676F6F676C652F70726F746F6275662F74696D657374616D702E70726F746F2297020A08456D706C6F796565120E0A0269641801200128055202696412120A046E616D6518022001280952046E616D6512180A0761646472657373180320012809520761646472657373123E0A0C656D706C6F7965655F61676518042001280B321B2E676F6F676C652E70726F746F6275662E496E74333256616C7565520B656D706C6F79656541676512390A0A73746172745F6461746518052001280B321A2E676F6F676C652E70726F746F6275662E54696D657374616D70520973746172744461746512280A047465616D18062001280B32142E6773722E70726F746F2E706F73742E5465616D52047465616D12280A04726F6C6518072001280E32142E6773722E70726F746F2E706F73742E526F6C655204726F6C6522360A045465616D12120A046E616D6518012001280952046E616D65121A0A086C6F636174696F6E18022001280952086C6F636174696F6E2A310A04526F6C65120B0A074D414E414745521000120D0A09444556454C4F5045521001120D0A094152434849544543541002620670726F746F33";
 
   public static void main(String[] args)
       throws IOException, TimeoutException, StreamingQueryException {
@@ -59,39 +51,25 @@ public class SparkCustomIcebergIngest {
           "Iceberg warehouse dir will be 'warehouse/' from the run dir  and the checkpoint directory will be 'tmp/'\n"
               + " this mode is for local based execution and development. Kafka broker in this case will also be 'localhost:9092'."
               + " Remember to clean the checkpoint dir for any changes or if you want to start 'clean'");
+      removeDuplicates = false;
       spark =
           SparkSession.builder()
               .master(master)
               .appName("JavaIoTProtoBufDescriptor2Iceberg")
-              .config( "spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-              .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
+              .config(
+                  "spark.sql.extensions",
+                  "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+              .config(
+                  "spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
               .config("spark.sql.catalog.spark_catalog.type", "hive")
               .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
               .config("spark.sql.catalog.local.type", "hadoop")
-              .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
+              .config(
+                  "spark.sql.shuffle.partitions",
+                  "50") // as we are not using AQE then we need to tune this
               .config("spark.sql.catalog.local.warehouse", "warehouse")
               .config("spark.sql.defaultCatalog", "local")
-                  /**
-                  //enable SPJ
-                   .config("spark.sql.sources.v2.bucketing.enabled","true")
-                  .config("spark.sql.sources.v2.bucketing.pushPartValues.enabled","true")
-                  .config("spark.sql.requireAllClusterKeysForCoPartition","false")
-                  .config("spark.sql.sources.v2.bucketing.partiallyClusteredDistribution.enabled","true")
-                  .config("spark.sql.sources.v2.bucketing.pushPartKeys.enabled","true")
-                  .config("spark.sql.iceberg.planning.preserve-data-grouping","true")
-                  .config("spark.sql.sources.v2.bucketing.allowJoinKeysSubsetOfPartitionKeys.enabled","false")
-                  .config("spark.sql.optimizer.runtime.rowLevelOperationGroupFilter.enabled","false")
-                  // enable shuffle hash join
-                  .config("spark.sql.join.preferSortMergeJoin","false")
-                  .config("spark.sql.shuffledHashJoinFactor","1")
-                  //set none to distribution mode
-                  .config("spark.sql.iceberg.distribution-mode","none")
-                  //disable adaptative
-                  .config("spark.sql.adaptive.coalescePartitions.enabled","false")
-                  .config("spark.sql.adaptive.skewJoin.enabled","false")
-                  .config("spark.sql.adaptive.enabled","false")**/
-
-                  .getOrCreate();
+              .getOrCreate();
       //local env with optional compaction and duplicate removal
     } else if (args.length == 2) {
       removeDuplicates = Boolean.parseBoolean(args[0]);
@@ -183,14 +161,17 @@ public class SparkCustomIcebergIngest {
           "Invalid number of arguments provided, please check the readme for the correct usage");
       System.exit(1);
     }
-    spark.sql("""
-CREATE DATABASE IF NOT EXISTS bigdata;
-""");
 
+    spark.sql(
+            """
+    CREATE DATABASE IF NOT EXISTS bigdata;
+    """);
 
-    spark.sql("""
-USE bigdata;
-""");
+    spark.sql(
+            """
+    USE bigdata;
+    """);
+
     spark.sql(
             """
                     CREATE TABLE IF NOT EXISTS employee
@@ -225,7 +206,7 @@ USE bigdata;
                 .load();
     
         Dataset<Row> output =
-            df.select(from_protobuf(col("value"),"Employee", protoDescFile).as("Employee"))
+            df.select(from_protobuf(col("value"),"Employee", HexFormat.of().parseHex(hexData)).as("Employee"))
                 .select(col("Employee.*"))
                 .select(
                     col("id").as("employee_id"),
@@ -247,42 +228,31 @@ USE bigdata;
                     // here we want to make normal "commits" and then for each 10 trigger run
                     // compactions!
                     (dataframe, batchId) -> {
-                      var session=dataframe.sparkSession();
                       log.warn("Writing batch {}", batchId);
                       if (removeDuplicates) {
-                        dataframe.createOrReplaceTempView("insert_data");
-                        // here we are pushing some filters like the team and the date (we know that
-                        // we will have late events from hour ago....
-                        // we could improve this filtering by bucket and just merge data from that
-                        // bucket ( using 8 merge queries), one per bucket. Iceberg bucketing  can be calculated via
-                        // 'system.bucket(8,employee_id)'
-                        // t.employee_id in (1,2,3,...) or t.employee_id in (7,8,9,....)
-                        // in each 'in' you can put 1000 values.
-                        // another way is to generate a column for the bucket and then make the join/ON there
-                        // this one maybe be easier instead of generate that long in(1,3,4,5,6....) list,
-                        // the problem is that you wouldn't able to use INSERT *
-                        // another thing to test storage-partitioned joins but from streaming sources the performance gains...
-                        // should be tested on cluster, on local laptop mode they hurt, already tested
-                        String merge =
-                            """
-                                  MERGE INTO bigdata.employee as t
-                                  USING  insert_data as s
-                                  ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
-                                  AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
-                                  WHEN NOT MATCHED THEN INSERT *
-                                  """;
-                        session.sql((merge));
+                        // first we want to filter affected partitions for filtering
+                        var partitions =
+                            dataframe
+                                .select(col("start_date"), col("team"), col("employee_id"))
+                                .withColumn("day", date_trunc("day", col("start_date")))
+                                .withColumn("hour", date_trunc("hour", col("start_date")))
+                                .select(col("employee_id"), col("day"), col("hour"), col("team"))
+                                .dropDuplicates();
+                        var listPartitions = partitions.collectAsList();
+                        log.warn("Affected partitions: {}", partitions.count());
+                        // partitions=
+                        // .dropDuplicates()
+                        // .collectAsList();
+
+                        log.warn("Partitions to merge: {}", partitions);
                       } else {
                         dataframe.write().insertInto("bigdata.employee");
                       }
                       if (compactionEnabled) {
-                        // the main idea behind this is in cases where you may have receiving "late
-                        // data randomly and
+                        // the main idea behind this is in cases where you may have receiving "late data randomly and
                         // doing the compaction jobs with optimistic concurrency will lead into a
-                        // lot of conflicts where you could increase the number of retries ( as we
-                        // are using partial
-                        // progress we need to increase the commit retries though), or you can just
-                        // use this
+                        // lot of conflicts where you could increase the number of retries ( as we are using partial
+                        // progress we need to increase the commit retries though), or you can just use this
                         // strategy for compaction, older partitions on each N batches.
                         if (batchId % 10 == 0) {
                           log.warn("\nCompaction in progress:\n");
@@ -300,15 +270,15 @@ USE bigdata;
                                       'max-file-group-size-bytes','10737418240',
                                       'partial-progress.enabled', 'true',
                                       'max-concurrent-file-group-rewrites', '10000',
-                                      'partial-progress.max-commits', '10'
+                                      'partial-progress.max-commits', '10'                                   
                                     ))
                                     """)
                               .show();
                         }
-                        // rewrite manifests from time to time
-                        log.warn("\nManifest compaction in progress:\n");
-                        if (batchId % 30 == 0) {
-                          spark
+                          // rewrite manifests from time to time
+                          log.warn("\nManifest compaction in progress:\n");
+                          if (batchId % 30 == 0) {
+                            spark
                               .sql(
                                   """
                                       CALL system.rewrite_manifests(
@@ -321,9 +291,9 @@ USE bigdata;
                         // old snapshots expiration can be done in another job for older partitions.
                       }
                     })
-            .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
+            .trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES))
             .option("fanout-enabled", "true") // disable ordering
-            .option("checkpointLocation", checkpointDir) // on local mode connected to glue disable it or add hadoop-aws library to add S3 file api .
+            .option("checkpointLocation", checkpointDir) // you should enable this on production
             .start();
     query.awaitTermination();
       }

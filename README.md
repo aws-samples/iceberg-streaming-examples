@@ -21,7 +21,22 @@ You can run these examples on any Spark compatible runtime too, but that's for a
 
 In the case of Amazon Web Services on AWS Glue, Amazon EMR or Amazon EMR Serverless.
 
-Remember also that these jobs and code can be adapted for **batch mode** easily (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end anyway. 
+Remember also that these jobs and code can be adapted for **batch mode** easily (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end anyway.
+
+### A note on performance
+
+Although the code here aims for performance more tuning can be done for achieving specific goals such as improving latency.
+
+Remember that Apache Iceberg have merge-on-read capabilities. In this repo, the default settings for tables are used
+but mixing copy-on-write with merge-on-read can lead to some gains as we will write faster.
+
+Remember that this is not a free lunch, you will need to compact if you want good performance.
+
+Another cool thing to test is to use Avro for the ingestion tables and then compact to parquet. 
+
+A good doc to read about these settings and more can be seen on the [Best Practices for Optimizing Apache Iceberg workloads](https://docs.aws.amazon.com/prescriptive-guidance/latest/apache-iceberg-on-aws/best-practices.html) from AWS Documentation.
+
+Another good read can be seen on this blog from Cloudera: [Optimization Strategies for Iceberg Tables](https://blog.cloudera.com/optimization-strategies-for-iceberg-tables/)
 
 ## IoT Scenarios
 
@@ -30,12 +45,16 @@ ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
 - Custom process writing with compaction via n-batches and deduplication via merge into( to be implemented).
 
-For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios there.
+For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios.
+
+The most advanced example using Protocol Buffers is in ```com.aws.emr.spark.iot``` package.
+
+Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run. 
+An example of such approach can be seen also on the Utils class of ```com.aws.emr.spark.iot``` package.
 
 Remember that exactly once systems are difficult to implement and that for Spark you will need and idempotent sink.
 
-Later on a job rewriting older partitions to check for duplicates are found and rewrite affected partitions may run.
-An example of such approach can be seen also on the utils package.
+If you want to use the GlueSchemaRegistry you should create in the console a stream registry named ```employee-schema-registry```.
 
 ### Protocol Buffers
 
@@ -47,6 +66,36 @@ An example of such approach can be seen also on the utils package.
 - Native Spark Structured streaming consumer. 
 - UDF based Spark Structured streaming consumer.
 
+Create a schema for the Glue registry ```Employee.proto``` if you like to use the Registry based producer/consumer:
+
+```
+syntax = "proto3";
+package gsr.proto.post;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+message Employee {
+      int32 id = 1;
+      string name = 2;
+      string address = 3;
+      google.protobuf.Int32Value employee_age = 4;
+      google.protobuf.Timestamp start_date = 5;
+     Team team = 6;
+     Role role = 7;
+
+}
+message Team {
+     string name = 1;
+     string location = 2;
+}
+enum Role {
+     MANAGER = 0;
+     DEVELOPER = 1;
+     ARCHITECT = 2;
+}
+```
+
 ### Apache Avro
 
 [Apache Avro](https://avro.apache.org/) - a data serialization system.
@@ -56,36 +105,67 @@ An example of such approach can be seen also on the utils package.
 - AWS Glue Registry based Java Producer/Consumer.
 - Native Spark Structured streaming consumer. 
 
+Create a schema for the Glue registry ```Employee.avsc``` if you like to use the Registry based producer/consumer:
+```
+{"namespace": "gsr.avro.post",
+ "type": "record",
+ "name": "Employee",
+ "fields": [
+     {"name": "employee_id", "type": "long"},
+     {"name": "age",  "type": "int"},
+     {"name": "start_date",   "type": "long"},
+   {"name": "team", "type": "string"},
+   {"name": "role", "type": "string"},
+   {"name": "address", "type": "string"},
+   {"name": "name", "type": "string"}]
+}
+```
+
 ### Json
 
-Used schema in Glue Schema Registry
+There is plenty of literature over the internet on how integrate Spark with Json data, therefore we just implemented one usecase.
+
+**Examples**:
+- AWS Glue Registry based Java Producer/Consumer.
+
+
+Create a schema for the Glue registry ```Employee.json``` if you like to use the Registry based producer/consumer:
 ```
 {
-	"$id": "https://example.com/person.schema.json",
-	"$schema": "http://json-schema.org/draft-07/schema#",
-	"title": "Person",
-	"type": "object",
-	"properties": {
-		"firstName": {
-			"type": "string",
-			"description": "The person's first name."
-		},
-		"lastName": {
-			"type": "string",
-			"description": "The person's last name."
-		},
-		"age": {
-			"description": "Age in years which must be equal to or greater than zero.",
-			"type": "integer",
-			"minimum": 0
-		}
-	}
+  "$id": "https://example.com/Employee.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Employee",
+  "description": "",
+  "type": "object",
+  "properties": {
+    "employeeId": {
+      "description": "The unique identifier for a employee",
+      "type": "integer"
+    },
+    "name": {
+      "description": "Name of the employee",
+      "type": "string"
+    }
+  }
 }
 
 ```
 ## CDC Scenarios
 
-Here the reference is tabular CDC best practices. **WIP**
+Here the reference is Tabular [Apache Iceberg Cookbook](https://tabular.io/apache-iceberg-cookbook/) and these blogposts:
+ - https://tabular.io/blog/hello-world-of-cdc/
+ - https://tabular.io/blog/cdc-data-gremlins/#eventual-consistency-causes-data-gremlins
+ - https://tabular.io/blog/cdc-merge-pattern/
+ - https://tabular.io/blog/cdc-zen-art-of-cdc-performance/
+
+Here we will focus on the Mirror MERGE patter, as stated in the Iceberg Cookbook the first part could be managed by 
+the Kafka Connect Tabular connector, but we will implement both processing pipelines using Spark. 
+
+The relevant classes are withing the ```com.aws.emr.spark.cdc``` package.  
+
+```KafkaCDCSimulator``` class is a Java producer simulating CDC data in [AWS Database Migration Service(DMS)](https://aws.amazon.com/es/dms/) format. 
+```SparkLogChange```  class is a Structured Streaming consumer that outputs a CDC changelog to an Iceberg table. 
+```SparkCDCMirror``` class is a Spark batch pipeline that process the MERGE using the Mirror approach. 
 
 ## Requirements
 
@@ -109,16 +189,17 @@ Create a S3 bucket with the following structure.
 ```
 s3bucket/
 	/jars
-	/protos.zip
+	/employee.desc -- or your custom protocol buffers descriptors
 	/warehouse
 	/checkpoint
 ```
 
-Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. The ```warehouse``` will be the place where the Iceberg Data and Metadata will libe and ```checkpoint``` will be used for Structured Streaming checkpointing mechanismn. 
+Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanismn. 
  
 Create a Database in the AWS Glue Data Catalog with the name ```bigdata```.
 
-You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture.
+You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture, enable ```Java 17``` as runtime, enable ```AWS Glue Data Catalog as metastore```
+integration and enable ```Cloudwatch logs``` if desired.
 
 Then you can issue a job run using this aws cli command. Remember to change the desired parameters.
 
@@ -126,16 +207,14 @@ Then you can issue a job run using this aws cli command. Remember to change the 
 	'{
         "sparkSubmit": {
             "entryPoint": "s3://s3bucket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
-            "entryPointArguments": ["false","s3://s3bucket/warehouse","s3://big-data-demos-iceberg/Employee.desc","s3://s3bucket/checkpoint","kafkaBootstrapString","true"],
-            "sparkSubmitParameters": "--class com.aws.emr.spark.iot.SparkCustomIcebergIngest --conf spark.executor.cores=4 --conf spark.hadoop.hive.metastore.client.factory.class=com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory --conf spark.executor.memory=16g  --conf spark.driver.cores=4 --conf spark.driver.memory=8g --conf spark.dynamicAllocation.minExecutors=4 --conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.emr-serverless.executor.disk.type=shuffle_optimized --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
+            "entryPointArguments": ["true","s3://s3bucket/warehouse","s3://s3bucket/Employee.desc","s3://s3bucket/checkpoint","kafkaBootstrapString","true"],
+            "sparkSubmitParameters": "--class com.aws.emr.spark.iot.SparkCustomIcebergIngest --conf spark.executor.cores=4 --conf spark.hadoop.hive.metastore.client.factory.class=com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory --conf spark.executor.memory=16g  --conf spark.driver.cores=2 --conf spark.driver.memory=8g --conf spark.dynamicAllocation.minExecutors=4 --conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.emr-serverless.executor.disk.type=shuffle_optimized --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1"
         }
     }'
-{
-	
-	
+{	
 ```
 
-Expected performance should be around 450.000 msgs per sec if you use the ```EXAMPLE``` without merge deduplication.
+Expected performance should be around 450.000 msgs per sec if you use the ```SparkCustomIcebergIngest```.
 
 <img src="imgs/emr_performance.png" align="center" height="450" width="600"/>
 

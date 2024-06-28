@@ -1,12 +1,11 @@
-package com.aws.emr.proto.kafka.producer;
+package com.aws.emr.avro.kafka.producer;
 
+import java.io.IOException;
+import java.time.Instant;
 import java.util.Properties;
 import java.util.SplittableRandom;
-import java.util.concurrent.TimeUnit;
 
-import com.google.protobuf.Int32Value;
-import com.google.protobuf.Timestamp;
-import gsr.proto.post.EmployeeOuterClass;
+import gsr.avro.post.Employee;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -16,30 +15,24 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.logging.log4j.LogManager;
 
-import static com.google.protobuf.util.Timestamps.fromMillis;
-import static java.lang.System.currentTimeMillis;
-
 /**
  *
- * A Kafka Java Producer implemented in Java producing Proto messages.
+ * A Kafka Java Producer implemented in Java producing avro messages.
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
- * @author acmanjon@amazon.com
+ * @author acmanjon @amazon.com
  */
-public class ProtoProducer {
 
-    private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(ProtoProducer.class);
+public class AvroProducer {
+
+    private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(AvroProducer.class);
 
     private static final SplittableRandom sr = new SplittableRandom();
-    private static boolean lateEvent=true;
-    private static boolean duplicates=true;
-
     /**
      * The constant bootstrapServers.
      */
-    protected static String bootstrapServers="localhost:9092"; // by default localhost
-
+protected static String bootstrapServers="localhost:9092"; // by default localhost
 
     /**
      * Main entry point.
@@ -50,13 +43,9 @@ public class ProtoProducer {
 public static void main(String args[]) throws InterruptedException {
         if(args.length == 1) {
             bootstrapServers=args[0];
-        } else if (args.length ==2){
-            lateEvent=Boolean.parseBoolean(args[1]);
-        }else if (args.length ==3){
-            duplicates=Boolean.parseBoolean(args[2]);
         }
         log.warn("Kafka bootstrap servers are set to "+bootstrapServers);
-        ProtoProducer producer = new ProtoProducer();
+        AvroProducer producer = new AvroProducer();
         producer.startProducer();
     }
 
@@ -73,30 +62,18 @@ public static void main(String args[]) throws InterruptedException {
      *
      * @return the employee outer class . employee
      */
-public EmployeeOuterClass.Employee createEmployeeRecord() {
-    Timestamp ts;
-    if(ProtoProducer.lateEvent){
-    // 0.001% we will have a "late" event touching the hour before
-    if (sr.nextInt(1000) == 0) {
-        ts = fromMillis(currentTimeMillis() - 3600000);
-    } else{
-        ts = fromMillis(currentTimeMillis());
-    }}else{
-        ts = fromMillis(currentTimeMillis());
-    }
-    EmployeeOuterClass.Employee employee
-                = EmployeeOuterClass.Employee.newBuilder()
-                .setId((sr.nextInt(100000)))
+public Employee createEmployeeRecord() {
+    Instant instant = Instant.now();
+    Employee emp=Employee.newBuilder()
+                .setEmployeeId(sr.nextInt(100000))
                 .setName("Dummy"+sr.nextInt(100))
                 .setAddress("Melbourne, Australia")
-                .setEmployeeAge(Int32Value.newBuilder().setValue(sr.nextInt(99)).build())
-                .setStartDate((ts))
-                .setRole(EmployeeOuterClass.Role.ARCHITECT)
-                .setTeam(EmployeeOuterClass.Team.newBuilder()
-                        .setName("Solutions Architects")
-                        .setLocation("Australia").build()).build();
-
-        return employee;
+                .setAge(sr.nextInt(99))
+                .setStartDate(instant.toEpochMilli())
+                .setRole("ARCHITECT")
+                .setTeam("Solutions Architects")
+                .build();
+        return emp;
     }
 
     /**
@@ -105,7 +82,7 @@ public EmployeeOuterClass.Employee createEmployeeRecord() {
      * @throws InterruptedException the interrupted exception
      */
 public void startProducer() throws InterruptedException {
-        String topic = "protobuf-demo-topic-pure";
+        String topic = "avro-demo-topic-pure";
 
         try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(getProducerConfig())){
       log.warn("Starting to send records...");
@@ -115,33 +92,27 @@ public void startProducer() throws InterruptedException {
         if (count % 100000000 == 0) {
           log.warn("100 million messages produced... ");
         }
-          if(ProtoProducer.duplicates){
-          // 0.005% we will have a "late" event touching the hour before
-          if (sr.nextInt(500) == 0) {
-
-          }
-          }
-        EmployeeOuterClass.Employee person = createEmployeeRecord();
+        Employee person = createEmployeeRecord();
         // for kafka key specification, not used in this example
         // String key = "key-" + employeeId;
-        ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, person.toByteArray());
+
+          var buf= person.toByteBuffer();
+          var array=new byte[buf.remaining()];
+          buf.get(array);
+          ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, array);
         producer.send(record, new ProducerCallback());
-          if(ProtoProducer.duplicates){
-              // 0.005% we will have a "duplicate" event
-              if (sr.nextInt(500) == 0) {
-                   record = new ProducerRecord<>(topic, person.toByteArray());
-                  producer.send(record, new ProducerCallback());
-              }
-          }
         count++;
         throttle++;
         // if you want to really push just un-comment this block
-        /*if (throttle % 50000 == 0) {
-        TimeUnit.MILLISECONDS.sleep(200);
+
+        /* if (throttle % 70000 == 0) {
+        TimeUnit.MILLISECONDS.sleep(400); //about 20.000 msg/seg
         }*/
       }
-    }
-  }
+    } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+}
 
     private class ProducerCallback implements Callback {
 

@@ -17,14 +17,31 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.logging.log4j.LogManager;
 
+/**
+ *
+ *
+ * A Kafka consumer implemented in Java  using the Glue Schema Registry consuming Protocol Buffers
+ *
+ * @author acmanjon@amazon.com
+ */
 
 public class ProtoConsumerSchemaRegistry {
 
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(ProtoConsumerSchemaRegistry.class);
 
-    private String bootstrapServers="localhost:9094";
+    private static String bootstrapServers="localhost:9092";
+
+    /**
+     *
+     * The entry point of application.
+     *
+     * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
+     */
 
     public static void main(String args[]){
+        if(args.length == 1) {
+            bootstrapServers=args[0];
+        }
         ProtoConsumerSchemaRegistry consumer = new ProtoConsumerSchemaRegistry();
         consumer.startConsumer();
     }
@@ -33,15 +50,16 @@ public class ProtoConsumerSchemaRegistry {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "protobuf");
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"latest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaDeserializer.class.getName());
-        props.put(AWSSchemaRegistryConstants.AWS_REGION,"us-east-1");
+        props.put(AWSSchemaRegistryConstants.AWS_REGION,"eu-west-1");
         props.put(AWSSchemaRegistryConstants.PROTOBUF_MESSAGE_TYPE, ProtobufMessageType.POJO.getName());
         return props;
     }
 
-    public void startConsumer() {
+  /** Start consumer. */
+  public void startConsumer() {
         log.info("starting consumer...");
         String topic = "protobuf-demo-topic";
             try (KafkaConsumer<String, EmployeeOuterClass.Employee> consumer  = new KafkaConsumer<>(getConsumerConfig())){

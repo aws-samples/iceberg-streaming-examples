@@ -1,4 +1,4 @@
-package com.aws.emr.spark.iot;
+package com.aws.emr.proto;
 
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.protobuf.functions.*;
@@ -14,9 +14,17 @@ import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
-public class SparkNativeIcebergIngest {
+/**
+ *
+ * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg using the native
+ * data source and writing via native Spark/Iceberg writing mechanism
+ *
+ * @author acmanjon@amazon.com
+ */
 
-  private static final Logger log = LogManager.getLogger(SparkNativeIcebergIngest.class);  private static String master = "";
+public class SparkNativeIcebergIngestProto {
+
+  private static final Logger log = LogManager.getLogger(SparkNativeIcebergIngestProto.class);  private static String master = "";
 
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
@@ -97,6 +105,15 @@ public class SparkNativeIcebergIngest {
       log.error("Invalid number of arguments provided, please check the readme for the correct usage");
       System.exit(1);
     }
+    spark.sql(
+            """
+    CREATE DATABASE IF NOT EXISTS bigdata;
+    """);
+
+    spark.sql(
+            """
+    USE bigdata;
+    """);
 
 
     spark.sql(
@@ -158,7 +175,7 @@ public class SparkNativeIcebergIngest {
               .outputMode("append")
               .option("checkpointLocation", "tmp/")  //iceberg native writing requires this to be enabled
               .option("fanout-enabled", "true") // disable ordering for low latency writes
-              .toTable("local.employee");
+              .toTable("employee");
     query.awaitTermination();
     }
 }

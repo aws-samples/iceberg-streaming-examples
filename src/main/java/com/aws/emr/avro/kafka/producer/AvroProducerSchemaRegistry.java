@@ -1,73 +1,91 @@
-package com.aws.emr.json.kafka.producer;
+package com.aws.emr.avro.kafka.producer;
 
 import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafkaSerializer;
 import com.amazonaws.services.schemaregistry.utils.AWSSchemaRegistryConstants;
 import com.amazonaws.services.schemaregistry.utils.ProtobufMessageType;
-import com.google.protobuf.Int32Value;
-import com.google.protobuf.Timestamp;
-import gsr.proto.post.EmployeeOuterClass;
+import gsr.avro.post.Employee;
+
+import java.time.Instant;
 import java.util.Properties;
+import java.util.SplittableRandom;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
 import software.amazon.awssdk.services.glue.model.DataFormat;
 
 /**
  *
- * A multithreaded Kafka Java Producer implemented in Java producing Proto messages using Glue Schema Registry
+ * A Kafka Java Producer implemented in Java producing Avro messages using Glue Schema Registry
  * It uses a SplittableRandom as it is a lot faster than the default implementation, and we are not using it for
  * cryptographic functions
  *
- * @author acmanjon@amazon.com
+ * @author acmanjon @amazon.com
  */
 
-public class ProtoProducerSchemaRegistry {
-    
-protected final Logger logger = LoggerFactory.getLogger(getClass());
+public class AvroProducerSchemaRegistry {
 
-    private String bootstrapServers="localhost:9094";
+
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger(AvroProducerSchemaRegistry.class);
+
+    private static String bootstrapServers =  "localhost:9092"; // by default localhost
+
+    private static final SplittableRandom sr = new SplittableRandom();
 
     private Properties getProducerConfig() {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaSerializer.class.getName());
-        props.put(AWSSchemaRegistryConstants.DATA_FORMAT, DataFormat.JSON.name());
-        props.put(AWSSchemaRegistryConstants.AWS_REGION, "us-east-1");
+        props.put(AWSSchemaRegistryConstants.DATA_FORMAT, DataFormat.AVRO.name());
+        props.put(AWSSchemaRegistryConstants.AWS_REGION, "eu-west-1");
         props.put(AWSSchemaRegistryConstants.REGISTRY_NAME, "employee-schema-registry");
-        props.put(AWSSchemaRegistryConstants.SCHEMA_NAME, "Employee-json");
+        props.put(AWSSchemaRegistryConstants.SCHEMA_NAME, "Employee.avsc");
         props.put(AWSSchemaRegistryConstants.PROTOBUF_MESSAGE_TYPE, ProtobufMessageType.POJO.getName());
         return props;
     }
 
-    public EmployeeOuterClass.Employee createEmployeeRecord(int employeeId) {
-        EmployeeOuterClass.Employee employee
-                = EmployeeOuterClass.Employee.newBuilder()
-                        .setId(employeeId)
-                        .setName("Dummy")
-                        .setAddress("Melbourne, Australia")
-                        .setEmployeeAge(Int32Value.newBuilder().setValue(32).build())
-                        .setStartDate(Timestamp.newBuilder().setSeconds(235234532434L).build()).build();
-        return employee;
+    /**
+     * Create employee record employee outer class . employee.
+     *
+     * @param employeeId the employee id
+     * @return the employee outer class . employee
+     */
+    public Employee createEmployeeRecord(int employeeId) {
+        Instant instant = Instant.now();
+        Employee emp=Employee.newBuilder()
+                .setEmployeeId(employeeId)
+                .setName("Dummy"+sr.nextInt(100))
+                .setAddress("Melbourne, Australia")
+                .setAge(sr.nextInt(99))
+                .setStartDate(instant.toEpochMilli())
+                .setRole("ARCHITECT")
+                .setTeam("Solutions Architects")
+                .build();
+        return emp;
     }
 
-    public void startProducer() throws InterruptedException {
-        String topic = "json-demo-topic";
-        KafkaProducer<String, EmployeeOuterClass.Employee> producer = new KafkaProducer<>(getProducerConfig());
+    /**
+     * Start producer.
+     *
+     * @throws InterruptedException the interrupted exception
+     */
+public void startProducer() throws InterruptedException {
+        String topic = "avro-demo-topic";
+        try(KafkaProducer<String, Employee> producer = new KafkaProducer<>(getProducerConfig())){
         logger.warn("Starting to send records...");
         int employeeId = 0;
         while (employeeId < 1000) {
-            EmployeeOuterClass.Employee person = createEmployeeRecord(employeeId);
+            Employee person = createEmployeeRecord(employeeId);
             String key = "key-" + employeeId;
-            ProducerRecord<String, EmployeeOuterClass.Employee> record = new ProducerRecord<>(topic, key, person);
+            ProducerRecord<String, Employee> record = new ProducerRecord<>(topic, key, person);
             producer.send(record, new ProducerCallback());
             employeeId++;
         }
+    }
     }
 
     private class ProducerCallback implements Callback {
@@ -87,8 +105,17 @@ protected final Logger logger = LoggerFactory.getLogger(getClass());
         }
     }
 
-    public static void main(String args[]) throws InterruptedException {
-        ProtoProducerSchemaRegistry producer = new ProtoProducerSchemaRegistry();
+    /**
+     * Main entry point
+     *
+     * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
+     * @throws InterruptedException the interrupted exception
+     */
+public static void main(String args[]) throws InterruptedException {
+        if(args.length == 1) {
+            bootstrapServers=args[0];
+        }
+        AvroProducerSchemaRegistry producer = new AvroProducerSchemaRegistry();
         producer.startProducer();
     }
 
