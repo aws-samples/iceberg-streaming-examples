@@ -187,7 +187,7 @@ Then you can issue a job run using this aws cli command. Remember to change the 
 	
 ```
 
-Expected performance should be around 450.000 msgs per sec if you use the ```EXAMPLE``` without merge deduplication.
+Expected performance should be around 450.000 msgs per sec if you use the ```SparkCustomIcebergIngest```.
 
 <img src="imgs/emr_performance.png" align="center" height="450" width="600"/>
 

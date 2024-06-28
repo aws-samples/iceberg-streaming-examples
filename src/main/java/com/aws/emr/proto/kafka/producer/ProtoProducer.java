@@ -136,9 +136,9 @@ public void startProducer() throws InterruptedException {
         count++;
         throttle++;
         // if you want to really push just un-comment this block
-        if (throttle % 50000 == 0) {
+        /*if (throttle % 50000 == 0) {
         TimeUnit.MILLISECONDS.sleep(200);
-        }
+        }*/
       }
     }
   }

@@ -21,12 +21,13 @@ public class SparkIcebergUtils {
     private static final Logger log = LogManager.getLogger(SparkIcebergUtils.class);
     private static boolean snapshotExpiration = true;
     private static boolean compactionEnabled = true;
+    private static boolean removeDuplicates = true;
 
     public static void main(String[] args) throws IOException, TimeoutException, StreamingQueryException {
         SparkSession spark = SparkSession
                 .builder()
                 .master("local[*]")
-                .appName("JavaIoTProtoBufDescriptor2Iceberg")
+                .appName("")
                 .config("spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
                 .config("spark.sql.catalog.spark_catalog","org.apache.iceberg.spark.SparkSessionCatalog")
                 .config("spark.sql.catalog.spark_catalog.type","hive")
@@ -99,6 +100,22 @@ public class SparkIcebergUtils {
                                ))
                                """)
           .show();
+
+        if(removeDuplicates){
+            //iceberg prefer dynamic overwrite, just set it
+            spark.sparkContext().conf().set("spark.sql.sources.partitionOverwriteMode","dynamic");
+            //remove duplicates from a partition or a set of partitions
+            spark
+                    .sql("""
+                            INSERT OVERWRITE employee
+                            SELECT employee_id, start_date, first(team),first(role),first(address),first(name)
+                            FROM employee
+                            WHERE cast(start_date as date) = '2020-07-01'  -- here we remove from a predefined day
+                            GROUP BY employee_id, start_date
+                             """
+                    )
+                    .show();
+        }
     }
     }
 

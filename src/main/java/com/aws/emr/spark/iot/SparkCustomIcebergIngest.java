@@ -30,6 +30,7 @@ import org.apache.spark.sql.streaming.Trigger;
  * MERGE INTO Deduplication
  *
  * @author acmanjon@amazon.com
+ *
  */
 
 public class SparkCustomIcebergIngest {
@@ -62,20 +63,35 @@ public class SparkCustomIcebergIngest {
           SparkSession.builder()
               .master(master)
               .appName("JavaIoTProtoBufDescriptor2Iceberg")
-              .config(
-                  "spark.sql.extensions",
-                  "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-              .config(
-                  "spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
+              .config( "spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+              .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
               .config("spark.sql.catalog.spark_catalog.type", "hive")
               .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
               .config("spark.sql.catalog.local.type", "hadoop")
-              .config(
-                  "spark.sql.shuffle.partitions",
-                  "50") // as we are not using AQE then we need to tune this
+              .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
               .config("spark.sql.catalog.local.warehouse", "warehouse")
               .config("spark.sql.defaultCatalog", "local")
-              .getOrCreate();
+                  /**
+                  //enable SPJ
+                   .config("spark.sql.sources.v2.bucketing.enabled","true")
+                  .config("spark.sql.sources.v2.bucketing.pushPartValues.enabled","true")
+                  .config("spark.sql.requireAllClusterKeysForCoPartition","false")
+                  .config("spark.sql.sources.v2.bucketing.partiallyClusteredDistribution.enabled","true")
+                  .config("spark.sql.sources.v2.bucketing.pushPartKeys.enabled","true")
+                  .config("spark.sql.iceberg.planning.preserve-data-grouping","true")
+                  .config("spark.sql.sources.v2.bucketing.allowJoinKeysSubsetOfPartitionKeys.enabled","false")
+                  .config("spark.sql.optimizer.runtime.rowLevelOperationGroupFilter.enabled","false")
+                  // enable shuffle hash join
+                  .config("spark.sql.join.preferSortMergeJoin","false")
+                  .config("spark.sql.shuffledHashJoinFactor","1")
+                  //set none to distribution mode
+                  .config("spark.sql.iceberg.distribution-mode","none")
+                  //disable adaptative
+                  .config("spark.sql.adaptive.coalescePartitions.enabled","false")
+                  .config("spark.sql.adaptive.skewJoin.enabled","false")
+                  .config("spark.sql.adaptive.enabled","false")**/
+
+                  .getOrCreate();
       //local env with optional compaction and duplicate removal
     } else if (args.length == 2) {
       removeDuplicates = Boolean.parseBoolean(args[0]);
@@ -231,6 +247,7 @@ USE bigdata;
                     // here we want to make normal "commits" and then for each 10 trigger run
                     // compactions!
                     (dataframe, batchId) -> {
+                      var session=dataframe.sparkSession();
                       log.warn("Writing batch {}", batchId);
                       if (removeDuplicates) {
                         dataframe.createOrReplaceTempView("insert_data");
@@ -240,19 +257,21 @@ USE bigdata;
                         // bucket ( using 8 merge queries), one per bucket. Iceberg bucketing  can be calculated via
                         // 'system.bucket(8,employee_id)'
                         // t.employee_id in (1,2,3,...) or t.employee_id in (7,8,9,....)
-                        // in each in you can put 1000 values.
+                        // in each 'in' you can put 1000 values.
                         // another way is to generate a column for the bucket and then make the join/ON there
                         // this one maybe be easier instead of generate that long in(1,3,4,5,6....) list,
                         // the problem is that you wouldn't able to use INSERT *
+                        // another thing to test storage-partitioned joins but from streaming sources the performance gains...
+                        // should be tested on cluster, on local laptop mode they hurt, already tested
                         String merge =
                             """
-                                  MERGE INTO bigdata.EMPLOYEE as t
+                                  MERGE INTO bigdata.employee as t
                                   USING  insert_data as s
                                   ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
                                   AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
                                   WHEN NOT MATCHED THEN INSERT *
                                   """;
-                        dataframe.sparkSession().sql((merge));
+                        session.sql((merge));
                       } else {
                         dataframe.write().insertInto("bigdata.employee");
                       }
@@ -302,9 +321,9 @@ USE bigdata;
                         // old snapshots expiration can be done in another job for older partitions.
                       }
                     })
-            .trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES))
+            .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
             .option("fanout-enabled", "true") // disable ordering
-            .option("checkpointLocation", checkpointDir) // you should enable this on production
+            .option("checkpointLocation", checkpointDir) // on local mode connected to glue disable it
             .start();
     query.awaitTermination();
       }
