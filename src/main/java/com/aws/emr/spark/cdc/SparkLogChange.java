@@ -4,8 +4,8 @@ import static org.apache.spark.sql.functions.*;
 
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -152,18 +152,23 @@ public class SparkLogChange {
                         .load();
 
 
-        Dataset<Row> output =df
-                .selectExpr("CAST(value AS STRING)")
-                .select(split(col("value"),",")).as("data")
-                .select("data.*");
 
+        var output =df.selectExpr("CAST(value AS STRING)");
 
+        List<String> schemaList =  Arrays.asList("operation","identifier","name");
+        Column column = functions.col("value");
+        Column linesSplit = functions.split(column,",");
+        for(int i=0;i<schemaList.size();i++){
+            output = output.withColumn(schemaList.get(i),linesSplit.getItem(i));
+        }
+
+        output=output.drop(col("value"));
 
          output.printSchema();
         StreamingQuery query =
-                output
+               output
                         .writeStream()
-                        .queryName("streaming-cdc-log-ingest")
+                        .queryName("cdc")
                         .format("console")
                         .trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES))
                         .outputMode("append")
