@@ -43,7 +43,7 @@ Another good read can be seen on this blog from Cloudera: [Optimization Strategi
 Here we have different approaches and common formats. About the different scenarios the main idea is high throughput streaming
 ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
-- Custom process writing with compaction via n-batches and deduplication via merge into( to be implemented).
+- Custom process writing with compaction via n-batches and deduplication via merge into.
 
 For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios.
 
