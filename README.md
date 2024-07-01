@@ -44,6 +44,7 @@ Here we have different approaches and common formats. About the different scenar
 ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
 - Custom process writing with compaction via n-batches and deduplication via merge into.
+- Custom process writing with async compaction and Merge-on-read mode.
 
 For the different formats we will have the native use case implemented and the ProtoBuf one will have all the scenarios.
 
@@ -203,7 +204,8 @@ integration and enable ```Cloudwatch logs``` if desired.
 
 Then you can issue a job run using this aws cli command. Remember to change the desired parameters.
 
-```aws emr-serverless start-job-run     --application-id application-identifier     --name job-run-name     --execution-role-arn arn-of-emrserverless-role --mode 'STREAMING'     --job-driver
+```
+aws emr-serverless start-job-run     --application-id application-identifier     --name job-run-name     --execution-role-arn arn-of-emrserverless-role --mode 'STREAMING'     --job-driver
 	'{
         "sparkSubmit": {
             "entryPoint": "s3://s3bucket/jars/streaming-iceberg-ingest-1.0-SNAPSHOT.jar",
