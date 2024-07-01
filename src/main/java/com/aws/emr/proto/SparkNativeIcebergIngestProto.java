@@ -28,8 +28,8 @@ public class SparkNativeIcebergIngestProto {
 
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
-  private static String icebergWarehouse = "src/main/resources/iot_data.pb";
-  private static String checkpointDir = "src/main/resources/iot_data.pb";
+  private static String icebergWarehouse = "warehouse/";
+  private static String checkpointDir = "tmp/";
   private static String bootstrapServers = "localhost:9092";
   public static void main(String[] args)
       throws IOException, TimeoutException, StreamingQueryException {
