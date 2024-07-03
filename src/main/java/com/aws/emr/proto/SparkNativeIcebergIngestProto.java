@@ -28,8 +28,8 @@ public class SparkNativeIcebergIngestProto {
 
   private static boolean removeDuplicates = false;
   private static String protoDescFile = "Employee.desc";
-  private static String icebergWarehouse = "src/main/resources/iot_data.pb";
-  private static String checkpointDir = "src/main/resources/iot_data.pb";
+  private static String icebergWarehouse = "warehouse/";
+  private static String checkpointDir = "tmp/";
   private static String bootstrapServers = "localhost:9092";
   public static void main(String[] args)
       throws IOException, TimeoutException, StreamingQueryException {
@@ -127,12 +127,12 @@ public class SparkNativeIcebergIngestProto {
                       address string,
                       name string
                       )
-                      PARTITIONED BY (bucket(8, employee_id), hours(start_date), team)
+                      PARTITIONED BY (bucket(32, employee_id), hours(start_date), team)
                       TBLPROPERTIES (
                                 'table_type'='ICEBERG',
                                 'write.parquet.compression-level'='7',
                                 'format'='parquet',
-                                'commit.retry.num-retries'='10',	--Number of times to retry a commit before failing
+                                'commit.retry.num-retries'='20',	--Number of times to retry a commit before failing
                                 'commit.retry.min-wait-ms'='250',	--Minimum time in milliseconds to wait before retrying a commit
                                 'commit.retry.max-wait-ms'='60000', -- (1 min)	Maximum time in milliseconds to wait before retrying a commit
                                 'write.parquet.compression-codec'='zstd',

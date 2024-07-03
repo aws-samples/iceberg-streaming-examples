@@ -268,6 +268,7 @@
                     <source>17</source>
                     <target>17</target>
                 </configuration>
+                <version>3.13.0</version>
             </plugin>
 
             <plugin>

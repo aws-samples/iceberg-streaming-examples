@@ -104,7 +104,7 @@ public class SparkIcebergUtils {
         if(removeDuplicates){
             //iceberg prefer dynamic overwrite, just set it
             spark.sparkContext().conf().set("spark.sql.sources.partitionOverwriteMode","dynamic");
-            //remove duplicates from a partition or a set of partitions
+            //remove duplicates from a partition or a set of partitions, this query needs to be tested
             spark
                     .sql("""
                             INSERT OVERWRITE employee
