@@ -67,8 +67,10 @@ public class KafkaCDCSimulator{
     public String createCDCRecord() {
 
         // simulate
-
-        return "I,hello,world";
+        int id=sr.nextInt(10000);
+        int balance=sr.nextInt(1000,10000);
+        Instant instant = Instant.now();
+        return "U,"+Integer.toString(id)+","+Integer.toString(balance)+","+Long.toString(instant.toEpochMilli());
     }
 
     /**

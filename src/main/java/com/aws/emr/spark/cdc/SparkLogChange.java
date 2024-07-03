@@ -121,16 +121,14 @@ public class SparkLogChange {
         """);
         spark.sql(
                 """
-                        CREATE TABLE IF NOT EXISTS employee
-                              (employee_id bigint,
-                              age int,
-                              start_date timestamp,
-                              team string,
-                              role string,
-                              address string,
-                              name string
+                        CREATE TABLE IF NOT EXISTS accounts_changelog
+                              (
+                              operation string,
+                              account_id bigint,
+                              balance bigint,
+                              last_updated timestamp
                               )
-                              PARTITIONED BY (bucket(8, employee_id), hours(start_date), team)
+                              PARTITIONED BY (days(last_updated),bucket(8, account_id))
                               TBLPROPERTIES (
                                         'table_type'='ICEBERG',
                                         'write.parquet.compression-level'='7',
@@ -155,7 +153,7 @@ public class SparkLogChange {
 
         var output =df.selectExpr("CAST(value AS STRING)");
 
-        List<String> schemaList =  Arrays.asList("operation","identifier","name");
+        List<String> schemaList =  Arrays.asList("operation","account_id","balance","last_updated");
         Column column = functions.col("value");
         Column linesSplit = functions.split(column,",");
         for(int i=0;i<schemaList.size();i++){
@@ -163,19 +161,21 @@ public class SparkLogChange {
         }
 
         output=output.drop(col("value"));
-
-         output.printSchema();
+        output = output
+                .withColumn("account_id", col("account_id").cast("integer"))
+                .withColumn("balance", col("balance").cast("integer"))
+                .withColumn("last_updated", col("last_updated").divide(1000).cast("timestamp"));
+        //remember that spark sql do not support epoch milliseconds, so you need to divide it by a 1000
+        output.printSchema();
         StreamingQuery query =
                output
                         .writeStream()
                         .queryName("cdc")
-                        .format("console")
-                        .trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES))
+                        .format("iceberg")
+                        .trigger(Trigger.ProcessingTime(2, TimeUnit.MINUTES))
                         .outputMode("append")
-                        //.option("checkpointLocation", "tmp/") // iceberg native writing requires this to be enabled
-                        .option("fanout-enabled", "true") // disable ordering for low latency writes
-                        .start();
-                        //.toTable("employee");
+                        .option("checkpointLocation", checkpointDir) // iceberg native writing requires this to be enabled
+                        .toTable("accounts_changelog");
 
         query.awaitTermination();
     }
