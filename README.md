@@ -20,7 +20,7 @@ The example uses maven profiles to automatically filter required libraries when 
 You can run these examples on any Spark compatible runtime too, but that's for a pull request ( if you like to contribute).
 
 In the case of Amazon Web Services on AWS Glue, Amazon EMR or Amazon EMR Serverless.
-
+æ
 Remember also that these jobs and code can be adapted for **batch mode** easily (and remember that you can use Kafka as batch source!). A batch job is just a special streaming job with a start and an end anyway.
 
 ### A note on performance
@@ -40,7 +40,7 @@ Another good read can be seen on this blog from Cloudera: [Optimization Strategi
 
 ## IoT Scenarios
 
-Here we have different approaches and common formats. About the different scenarios the main idea is high throughput streaming
+Here we have different approaches and comœmon formats. About the different scenarios the main idea is high throughput streaming
 ingestion:
 - Native Iceberg writing with deduplication via even-time watermarking.
 - Custom process writing with compaction via n-batches and deduplication via merge into.
