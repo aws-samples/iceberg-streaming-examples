@@ -211,12 +211,24 @@ USE bigdata;
                                     'write.delete.mode'='copy-on-write',
                                     'write.update.mode'='merge-on-read',
                                     'write.merge.mode'='merge-on-read',
-                                    'commit.retry.num-retries'='10',	--Number of times to retry a commit before failing
+                                    'write.parquet.row-group-size-bytes' = '134217728',  -- 128MB
+                                    'write.parquet.page-size-bytes' = '1048576',  -- 2MB
+                                    'write.target-file-size-bytes' = '536870912',  -- 256MB
+                                    'write.distribution-mode' = 'hash',
+                                    'write.delete.distribution-mode' = 'none',
+                                    'write.update.distribution-mode' =  'none',
+                                    'write.merge.distribution-mode' = 'none',
+                                    'write.spark.fanout.enabled' = 'true',
+                                    'write.metadata.delete-after-commit.enabled' = 'true',
+                                    'write.metadata.previous-versions-max' = '3',
+                                    'history.expire.max-snapshot-age-ms' = '259200000',  -- 3 days
+                                    'commit.retry.num-retries'='20',	--Number of times to retry a commit before failing
                                     'commit.retry.min-wait-ms'='250',	--Minimum time in milliseconds to wait before retrying a commit
                                     'commit.retry.max-wait-ms'='60000', -- (1 min)	Maximum time in milliseconds to wait before retrying a commit
                                     'write.parquet.compression-codec'='zstd',
                                     -- if you have a huge number of columns remember to tune dict-size and page-size
                                     'compatibility.snapshot-id-inheritance.enabled'='true' );
+                                   
                     """);
 
     Dataset<Row> df =

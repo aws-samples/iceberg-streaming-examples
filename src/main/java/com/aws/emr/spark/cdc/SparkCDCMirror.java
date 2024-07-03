@@ -118,16 +118,12 @@ public class SparkCDCMirror {
         """);
         spark.sql(
                 """
-                        CREATE TABLE IF NOT EXISTS employee
-                              (employee_id bigint,
-                              age int,
-                              start_date timestamp,
-                              team string,
-                              role string,
-                              address string,
-                              name string
+                        CREATE TABLE IF NOT EXISTS accounts_mirror
+                              (account_id bigint,
+                              balance float,
+                              last_updated timestamp
                               )
-                              PARTITIONED BY (bucket(8, employee_id), hours(start_date), team)
+                              PARTITIONED BY (bucket(8, account_id))
                               TBLPROPERTIES (
                                         'table_type'='ICEBERG',
                                         'write.parquet.compression-level'='7',
@@ -139,7 +135,33 @@ public class SparkCDCMirror {
                                         -- if you have a huge number of columns remember to tune dict-size and page-size
                                         'compatibility.snapshot-id-inheritance.enabled'='true' );
                         """);
+        // we just filter changes from the last day as we don't want to scan for latest change while deduplication
+        // on a huge dataset
+        spark.sql("""
+                WITH windowed_changes AS (
+                SELECT
+                    account_id,
+                    balance,
+                    last_updated,
+                    _cdc,
+                    row_number() OVER (
+                        PARTITION BY account_id
+                        ORDER BY last_updated DESC) AS row_num
+                FROM accounts_changelog_incremental_view where last_updated > current_timestamp() - INTERVAL 1 DAY
+                ),
+                accounts_changes AS (
+                    SELECT * FROM windowed_changes WHERE row_num = 1
+                )
+                MERGE INTO db.accounts_mirror a USING accounts_changes c
+                ON a.account_id = c.account_id
+                WHEN MATCHED AND c._cdc.op = 'D' THEN DELETE
+                WHEN MATCHED THEN UPDATE
+                    SET a.balance = c.balance,
+                        a.last_updated = c.last_updated
+                WHEN NOT MATCHED AND c._cdc.op != 'D' THEN
+                    INSERT (account_id, balance, last_updated)
+                    VALUES (c.account_id, c.balance, c.last_updated);
 
-
+""");
     }
 }
