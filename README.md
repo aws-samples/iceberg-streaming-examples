@@ -164,9 +164,10 @@ the Kafka Connect Tabular connector, but we will implement both processing pipel
 
 The relevant classes are withing the ```com.aws.emr.spark.cdc``` package.  
 
-```KafkaCDCSimulator``` class is a Java producer simulating CDC data in [AWS Database Migration Service(DMS)](https://aws.amazon.com/es/dms/) format. 
-```SparkLogChange```  class is a Structured Streaming consumer that outputs a CDC changelog to an Iceberg table. 
-```SparkCDCMirror``` class is a Spark batch pipeline that process the MERGE using the Mirror approach. 
+ * ```KafkaCDCSimulator``` class is a Java producer simulating CDC data in [AWS Database Migration Service(DMS)](https://aws.amazon.com/es/dms/) format. 
+ * ```SparkLogChange```  class is a Structured Streaming consumer that outputs a CDC changelog to an Iceberg table. 
+ * ```SparkCDCMirror``` class is a Spark batch pipeline that process the MERGE using the Mirror approach.
+ * ```SparkIncrementalPipeline``` class uses Incremental pipeline for consuming the CDC changelog into a target table. 
 
 ## Requirements
 
