@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Properties;
 import java.util.SplittableRandom;
 
+import com.aws.emr.proto.kafka.producer.ProtoProducer;
 import gsr.avro.post.Employee;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -14,6 +15,8 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.logging.log4j.LogManager;
+import static com.google.protobuf.util.Timestamps.fromMillis;
+import static java.lang.System.currentTimeMillis;
 
 /**
  *
@@ -29,6 +32,9 @@ public class AvroProducer {
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(AvroProducer.class);
 
     private static final SplittableRandom sr = new SplittableRandom();
+    private static boolean lateEvent=true;
+    private static boolean duplicates=true;
+
     /**
      * The constant bootstrapServers.
      */
@@ -64,16 +70,25 @@ public static void main(String args[]) throws InterruptedException {
      */
 public Employee createEmployeeRecord() {
     Instant instant = Instant.now();
+    var time=instant.toEpochMilli();
+        if(AvroProducer.lateEvent){
+        // 0.001% we will have a "late" event touching the hour before
+        if (sr.nextInt(1000) == 0) {
+            time= time - 3600000;
+        }
+    }
     Employee emp=Employee.newBuilder()
-                .setEmployeeId(sr.nextInt(100000))
-                .setName("Dummy"+sr.nextInt(100))
-                .setAddress("Melbourne, Australia")
-                .setAge(sr.nextInt(99))
-                .setStartDate(instant.toEpochMilli())
-                .setRole("ARCHITECT")
-                .setTeam("Solutions Architects")
-                .build();
-        return emp;
+            .setEmployeeId(sr.nextInt(100000))
+            .setName("Dummy"+sr.nextInt(100))
+            .setAddress("Melbourne, Australia")
+            .setAge(sr.nextInt(99))
+            .setStartDate(time)
+            .setRole("ARCHITECT")
+            .setTeam("Solutions Architects")
+            .build();
+
+    return emp;
+
     }
 
     /**
@@ -100,7 +115,13 @@ public void startProducer() throws InterruptedException {
           var array=new byte[buf.remaining()];
           buf.get(array);
           ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, array);
-        producer.send(record, new ProducerCallback());
+            producer.send(record, new ProducerCallback());
+          if(AvroProducer.duplicates){
+              // 0.005% we will have a "duplicate" event
+              if (sr.nextInt(500) == 0) {
+                  producer.send(record, new ProducerCallback());
+              }
+          }
         count++;
         throttle++;
         // if you want to really push just un-comment this block
