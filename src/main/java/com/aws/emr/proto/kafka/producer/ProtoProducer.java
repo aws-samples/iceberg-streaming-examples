@@ -2,7 +2,6 @@ package com.aws.emr.proto.kafka.producer;
 
 import java.util.Properties;
 import java.util.SplittableRandom;
-import java.util.concurrent.TimeUnit;
 
 import com.google.protobuf.Int32Value;
 import com.google.protobuf.Timestamp;
@@ -47,7 +46,7 @@ public class ProtoProducer {
      * @param args the kafkaBootstrapString -- optional defaults to localhost:9092
      * @throws InterruptedException the interrupted exception
      */
-public static void main(String args[]) throws InterruptedException {
+    public static void main(String args[]) throws InterruptedException {
         if(args.length == 1) {
             bootstrapServers=args[0];
         } else if (args.length ==2){
@@ -73,18 +72,18 @@ public static void main(String args[]) throws InterruptedException {
      *
      * @return the employee outer class . employee
      */
-public EmployeeOuterClass.Employee createEmployeeRecord() {
-    Timestamp ts;
-    if(ProtoProducer.lateEvent){
-    // 0.001% we will have a "late" event touching the hour before
-    if (sr.nextInt(1000) == 0) {
-        ts = fromMillis(currentTimeMillis() - 3600000);
-    } else{
-        ts = fromMillis(currentTimeMillis());
-    }}else{
-        ts = fromMillis(currentTimeMillis());
-    }
-    EmployeeOuterClass.Employee employee
+    public EmployeeOuterClass.Employee createEmployeeRecord() {
+        Timestamp ts;
+        if(ProtoProducer.lateEvent){
+            // 0.001% we will have a "late" event touching the hour before
+            if (sr.nextInt(1000) == 0) {
+                ts = fromMillis(currentTimeMillis() - 3600000);
+            } else{
+                ts = fromMillis(currentTimeMillis());
+            }}else{
+            ts = fromMillis(currentTimeMillis());
+        }
+        EmployeeOuterClass.Employee employee
                 = EmployeeOuterClass.Employee.newBuilder()
                 .setId((sr.nextInt(100000)))
                 .setName("Dummy"+sr.nextInt(100))
@@ -104,38 +103,39 @@ public EmployeeOuterClass.Employee createEmployeeRecord() {
      *
      * @throws InterruptedException the interrupted exception
      */
-public void startProducer() throws InterruptedException {
+    public void startProducer() throws InterruptedException {
         String topic = "protobuf-demo-topic-pure";
 
         try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(getProducerConfig())){
-      log.warn("Starting to send records...");
-      int count = 1;
-      int throttle = 0;
-      while (true) {
-        if (count % 100000000 == 0) {
-          log.warn("100 million messages produced... ");
-        }
-        EmployeeOuterClass.Employee person = createEmployeeRecord();
-        // for kafka key specification, not used in this example
-        // String key = "key-" + employeeId;
-        ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, person.toByteArray());
-        producer.send(record, new ProducerCallback());
-          if(ProtoProducer.duplicates){
-              // 0.005% we will have a "duplicate" event
-              if (sr.nextInt(500) == 0) {
-                   record = new ProducerRecord<>(topic, person.toByteArray());
-                  producer.send(record, new ProducerCallback());
-              }
-          }
-        count++;
-        throttle++;
-        // if you want to really push just un-comment this block
+            log.warn("Starting to send records...");
+            int count = 1;
+            int throttle = 0;
+            while (true) {
+                if (count % 2000000000 == 0) {
+                    log.warn("2 billion messages produced... ");
+                    break;
+                }
+                EmployeeOuterClass.Employee person = createEmployeeRecord();
+                // for kafka key specification, not used in this example
+                // String key = "key-" + employeeId;
+                ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, person.toByteArray());
+                producer.send(record, new ProducerCallback());
+                if(ProtoProducer.duplicates){
+                    // 0.005% we will have a "duplicate" event
+                    if (sr.nextInt(500) == 0) {
+                        record = new ProducerRecord<>(topic, person.toByteArray());
+                        producer.send(record, new ProducerCallback());
+                    }
+                }
+                count++;
+                throttle++;
+                // if you want to really push just un-comment this block
         /*if (throttle % 50000 == 0) {
         TimeUnit.MILLISECONDS.sleep(200);
         }*/
-      }
+            }
+        }
     }
-  }
 
     private class ProducerCallback implements Callback {
 
@@ -155,3 +155,4 @@ public void startProducer() throws InterruptedException {
     }
 
 }
+
