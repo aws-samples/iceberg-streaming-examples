@@ -115,12 +115,6 @@ public void startProducer() throws InterruptedException {
         if (count % 100000000 == 0) {
           log.warn("100 million messages produced... ");
         }
-          if(ProtoProducer.duplicates){
-          // 0.005% we will have a "late" event touching the hour before
-          if (sr.nextInt(500) == 0) {
-
-          }
-          }
         EmployeeOuterClass.Employee person = createEmployeeRecord();
         // for kafka key specification, not used in this example
         // String key = "key-" + employeeId;

@@ -203,7 +203,7 @@ USE bigdata;
                           address string,
                           name string
                           )
-                          PARTITIONED BY (bucket(42, employee_id), hours(start_date), team)
+                          PARTITIONED BY (hours(start_date), team, bucket(42, employee_id))
                           TBLPROPERTIES (
                                     'table_type'='ICEBERG',
                                     'write.parquet.compression-level'='7',
