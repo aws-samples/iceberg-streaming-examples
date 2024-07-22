@@ -113,16 +113,3 @@ Remember that your EC2 instance need to have network access to the MSK cluster, 
 ## Costs
 
 Remember that this benchmark is for high throughput scenarios and therefore the config may lead to quite big bill if deployed on top of AWS, remember to stop the EMR Serverless application, the used instance for the Kafka producer and delete the Amazon MSK cluster after the test.
-
-## Security
-
-The code here is not secured in any way, you should secure your Apache Kafka cluster and be aware that some dependencies may have known vulnerabilities. If you deploy any service on top of AWS you should configure the roles using the least permission model
-using [IAM roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) and [Amazon Lake Formation](https://aws.amazon.com/lake-formation/) if needed.
-
-## Contributing
-
-See [CONTRIBUTING](CONTRIBUTING.md) for more information.
-
-## License
-
-This library is licensed under the MIT-0 License. See the LICENSE file.
