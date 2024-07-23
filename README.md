@@ -34,7 +34,7 @@ integration and enable ```Cloudwatch logs``` if desired.
 
 Remember to configure the network (VPC and security groups as the application will need to reach the MSK cluster). 
 
-### Create an Amazon MSK AWS
+## Create an Amazon MSK AWS and create an EC2 instance that will hold the data producer
 
 Create a Amazon MSK cluster with at leas 4 brokers using ```3.5.1```, [Apache Zookeeper](https://zookeeper.apache.org/) mode version and use as instance type ```kafka.m7g.large```. Do not use public access and choose two private subnets to deploy it. For the security group remember that the EMR cluster and the EC2 based producer will need to reach the cluster and act accordingly. For security, use ```PLAINTEXT``` (in production you should secure access to the cluster). Choose ```200GB``` as storage size for each broker and do not enable ```Tiered storage```. For the cluster configuration use this one:
 
@@ -72,6 +72,7 @@ cd bin/
 ./kafka-topics.sh --topic protobuf-demo-topic-pure-auto --bootstrap-server kafkaBoostrapString --create
 ./kafka-topics.sh --topic protobuf-demo-topic-pure --bootstrap-server kafkaBoostrapString --create   
 ```
+
 
 ## Launch the job runs for compacted and un-compacted tables 
 
