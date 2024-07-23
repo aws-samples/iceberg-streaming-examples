@@ -25,7 +25,7 @@ s3bucket/
 ```
 ## Package the application using Maven and create an Amazon EMR Serverless Application
 
-Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` folder. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanism.
+Package your application using the ```emr``` Maven profile, then upload the jar of the project to the ```jars``` on the s3 bucket. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanism.
 
 Create a Database in the AWS Glue Data Catalog with the name ```bigdata```.
 
