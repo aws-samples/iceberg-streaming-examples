@@ -21,6 +21,8 @@ s3bucket/
 
 Get the packaged application from the releases tab on the repo [link](https://github.com/aws-samples/iceberg-streaming-examples/releases/tag/auto-compaction-0.1), then upload the `jar` to the ```jars``` directory on the s3 bucket. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanism.
 
+## Setup the Glue database and setup EMR Serverless application
+
 Create a Database in the AWS Glue Data Catalog with the name ```bigdata```.
 
 You need to create an EMR Serverless application with ```default settings for batch jobs only```, application type ```Spark``` release version ```7.1.0``` and ```x86_64``` as architecture, enable ```Java 17``` as runtime, enable ```AWS Glue Data Catalog as metastore```
@@ -28,7 +30,7 @@ integration and enable ```Cloudwatch logs``` if desired.
 
 Remember to configure the network (VPC and security groups as the application will need to reach the MSK cluster). 
 
-## Create an Amazon MSK AWS and create an EC2 instance that will hold the data producer
+## Create an Amazon MSK AWS cluster and create an EC2 instance that will hold the data producer
 
 Create a Amazon MSK cluster with at leas 4 brokers using ```3.5.1```, [Apache Zookeeper](https://zookeeper.apache.org/) mode version and use as instance type ```kafka.m7g.large```. Do not use public access and choose two private subnets to deploy it. For the security group remember that the EMR cluster and the EC2 based producer will need to reach the cluster and act accordingly. For security, use ```PLAINTEXT``` (in production you should secure access to the cluster). Choose ```200GB``` as storage size for each broker and do not enable ```Tiered storage```. For the cluster configuration use this one:
 
