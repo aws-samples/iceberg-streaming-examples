@@ -4,12 +4,6 @@ Ingestion performance for simulated IoT data with duplicates and late events ( a
 
 IoT Simulator on EC2 →  Kafka → EMR Serverless Streaming Application → S3 (Iceberg) ← Athena
 
-## Requirements
-
-* Java 17 +
-* Maven 3.9+
-* Whatever IDE you like ([Intellij](https://www.jetbrains.com/intellij/), [Visual Studio Code](https://code.visualstudio.com/), [NetBeans](https://apache.netbeans.org/), etc)
-
 ### Create S3 structure:
 
 Create a S3 bucket with the following structure.
@@ -23,9 +17,9 @@ s3bucket/
 	/checkpoint
 	/checkpointAuto
 ```
-## Package the application using Maven and create an Amazon EMR Serverless Application
+## Download the application on the releases page
 
-Package your application using the ```emr``` Maven profile. You will use maven command ```mvn package -P emr```, then upload the jar of the project (that can be found on the ```target/``` directory) to the ```jars``` on the s3 bucket. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanism.
+Get the packaged application from the releases tab on the repo [link](https://github.com/aws-samples/iceberg-streaming-examples/releases/tag/auto-compaction-0.1), then upload the `jar` to the ```jars``` directory on the s3 bucket. The ```warehouse``` will be the place where the Iceberg Data and Metadata will live and ```checkpoint``` will be used for Structured Streaming checkpointing mechanism.
 
 Create a Database in the AWS Glue Data Catalog with the name ```bigdata```.
 
