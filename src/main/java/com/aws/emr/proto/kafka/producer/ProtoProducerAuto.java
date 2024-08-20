@@ -107,11 +107,11 @@ public class ProtoProducerAuto {
 
         try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(getProducerConfig())){
             log.warn("Starting to send records...");
-            long count = 1;
+            int count = 1;
             int throttle = 0;
             while (true) {
-                if (count % 20000000000L == 0) {
-                    log.warn("20 billion messages produced... ");
+                if (count % 2000000000 == 0) {
+                    log.warn("2 billion messages produced... ");
                     break;
                 }
                 EmployeeOuterClass.Employee person = createEmployeeRecord();

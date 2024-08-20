@@ -219,8 +219,8 @@ USE bigdata;
                                         'write.update.distribution-mode' =  'none',
                                         'write.merge.distribution-mode' = 'none',
                                         'write.spark.fanout.enabled' = 'true',
-                                        'write.metadata.delete-after-commit.enabled' = 'false', -- we are using Glue optimizer for this
-                                        'write.metadata.previous-versions-max' = '100',
+                                        'write.metadata.delete-after-commit.enabled' = 'true',
+                                        'write.metadata.previous-versions-max' = '3',
                                         'history.expire.max-snapshot-age-ms' = '259200000',  -- 3 days
                                         'commit.retry.num-retries'='20',	--Number of times to retry a commit before failing
                                         'commit.retry.min-wait-ms'='250',	--Minimum time in milliseconds to wait before retrying a commit
