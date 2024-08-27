@@ -115,6 +115,7 @@ public class SparkCustomIcebergIngestMoR {
               .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
               .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
               .config("spark.sql.catalog.spark_catalog.type", "hive")
+              .config("spark.hadoop.fs.s3.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
               .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
               .config("spark.sql.catalog.local.type", "hadoop")
               .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this for the size of our cluster/tasks
@@ -148,6 +149,7 @@ public class SparkCustomIcebergIngestMoR {
                       .config("spark.sql.catalog.glue_catalog.catalog-impl", "org.apache.iceberg.aws.glue.GlueCatalog")
                       .config("spark.sql.catalog.glue_catalog", "org.apache.iceberg.spark.SparkCatalog")
                       .config("spark.sql.catalog.glue_catalog.warehouse", icebergWarehouse)
+                      .config("spark.hadoop.fs.s3.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
                       .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
                       .config("spark.sql.shuffle.partitions", "100") // as we are not using AQE then we need to tune this
                       .config("spark.sql.defaultCatalog", "glue_catalog")
@@ -174,6 +176,8 @@ public class SparkCustomIcebergIngestMoR {
               .config("spark.sql.catalog.glue_catalog", "org.apache.iceberg.spark.SparkCatalog")
               .config("spark.sql.catalog.glue_catalog.warehouse", icebergWarehouse)
               .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+              .config("spark.sql.iceberg.data-prefetch.enabled","true")
+              .config("spark.hadoop.fs.s3.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
               .config("spark.sql.shuffle.partitions", "100") // as we are not using AQE then we need to tune this
               .config("spark.sql.defaultCatalog", "glue_catalog")
 
@@ -219,8 +223,8 @@ USE bigdata;
                                     'write.update.distribution-mode' =  'none',
                                     'write.merge.distribution-mode' = 'none',
                                     'write.spark.fanout.enabled' = 'true',
-                                    'write.metadata.delete-after-commit.enabled' = 'true',
-                                    'write.metadata.previous-versions-max' = '3',
+                                    'write.metadata.delete-after-commit.enabled' = 'false',
+                                    'write.metadata.previous-versions-max' = '50',
                                     'history.expire.max-snapshot-age-ms' = '259200000',  -- 3 days
                                     'commit.retry.num-retries'='20',	--Number of times to retry a commit before failing
                                     'commit.retry.min-wait-ms'='250',	--Minimum time in milliseconds to wait before retrying a commit

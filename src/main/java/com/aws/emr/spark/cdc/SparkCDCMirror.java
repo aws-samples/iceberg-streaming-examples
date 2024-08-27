@@ -93,6 +93,8 @@ public class SparkCDCMirror {
                             .config("spark.sql.catalog.glue_catalog.warehouse", icebergWarehouse)
                             .config("spark.sql.catalog.glue_catalog.catalog-impl","org.apache.iceberg.aws.glue.GlueCatalog")
                             .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+                            .config("spark.hadoop.fs.s3.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
+                            .config("spark.sql.iceberg.data-prefetch.enabled","true")
                             .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
                             .config("spark.sql.defaultCatalog", "glue_catalog")
                             .getOrCreate();
