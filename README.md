@@ -1,6 +1,7 @@
 # Streaming Apache Iceberg examples using Apache Spark
+AWS Managed Kafka and Apache Kafka, a distributed event streaming platform, has become the de facto standard for building real-time data pipelines. However, ingesting and storing large amounts of streaming data in a scalable and performant manner can be complex and resource-intensive task, often leading to performance issues and increased costs.
 
-This projects has examples of high volume streaming ingestion from [Apache Kafka](https://kafka.apache.org/) using [Apache Spark](https://spark.apache.org/) and [Apache Iceberg](https://iceberg.apache.org/). 
+This project covers  how open table formats, such as Apache Iceberg, can help address these challenges. It provides  a solution that combines the power of [Apache Kafka](https://kafka.apache.org/) , [Apache Spark](https://spark.apache.org/), and [Apache Iceberg](https://iceberg.apache.org/) to achieve high-throughput streaming ingestion
 
 The focus in this repository is to go further than the typical poc consuming few messages or small csv files. The aim here is to provide support for around **400,000 msg/seg** on all scenarios. 
 
