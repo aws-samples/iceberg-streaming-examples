@@ -208,7 +208,7 @@ USE bigdata;
                                         'table_type'='ICEBERG',
                                         'write.parquet.compression-level'='7',
                                         'format'='parquet',
-                                        'write.delete.mode'='copy-on-write',
+                                        'write.delete.mode'='merge-on-read',
                                         'write.update.mode'='merge-on-read',
                                         'write.merge.mode'='merge-on-read',
                                         'write.parquet.row-group-size-bytes' = '134217728',  -- 128MB
