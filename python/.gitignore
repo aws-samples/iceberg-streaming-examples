@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ---- uv / virtualenv ----
+.venv/
+venv/
+.env
+# NOTE: uv.lock and .python-version are intentionally committed for reproducible installs.
+
+# ---- Generated protobuf bindings (regenerate with scripts/gen_proto.sh) ----
+src/iceberg_streaming/proto_gen/*_pb2.py
+src/iceberg_streaming/proto_gen/*_pb2_grpc.py
+
+# ---- Tooling caches ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- Local Spark / Iceberg run artifacts ----
+warehouse/
+warehouse*/
+spark-warehouse/
+tmp/
+metastore_db/
+derby.log
+*.crc
+
+# ---- Logs ----
+*.log
+
+# ---- OS ----
+.DS_Store
