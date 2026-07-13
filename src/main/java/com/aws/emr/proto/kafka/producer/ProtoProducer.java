@@ -65,6 +65,14 @@ public static void main(String args[]) throws InterruptedException {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+        // --- high-throughput producer tuning ---
+        props.put(ProducerConfig.ACKS_CONFIG, "1");                     // throughput over max durability
+        props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "zstd");      // big win on network + storage
+        props.put(ProducerConfig.BATCH_SIZE_CONFIG, "262144");          // 256 KiB batches
+        props.put(ProducerConfig.LINGER_MS_CONFIG, "50");              // let batches fill before sending
+        props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, "268435456");    // 256 MiB send buffer
+        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5");
+        props.put(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "10485760");  // 10 MiB
         return props;
     }
 

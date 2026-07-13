@@ -1,53 +1,41 @@
 package com.aws.emr.spark.iot;
+
+import com.aws.emr.common.JobConfig;
 import java.io.IOException;
 import java.util.concurrent.TimeoutException;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 
 /**
+ * An example of Iceberg table maintenance (compaction, snapshot expiration and partition level
+ * deduplication) that works against any of the supported catalogs.
  *
- * An example compaction and snapshot expiration on Apache Iceberg on the local environment mode.
- *
- * Implementation for Glue Catalog up to the user
+ * <p>By default it runs locally against the Hadoop catalog, but you can point it at Glue or S3
+ * Tables with {@link JobConfig} {@code key=value} arguments (for example
+ * {@code catalog=glue warehouse=s3://bucket/wh}). The {@code employee} table is created as an
+ * Iceberg format-version 3 (v3) table if it does not already exist.
  *
  * @author acmanjon@amazon.com
  */
-
 public class SparkIcebergUtils {
 
-    private static final Logger log = LogManager.getLogger(SparkIcebergUtils.class);
-    private static boolean snapshotExpiration = true;
-    private static boolean compactionEnabled = true;
-    private static boolean removeDuplicates = true;
+  private static final Logger log = LogManager.getLogger(SparkIcebergUtils.class);
+  private static final boolean snapshotExpiration = true;
+  private static final boolean compactionEnabled = true;
+  private static final boolean removeDuplicates = true;
 
-    public static void main(String[] args) throws IOException, TimeoutException, StreamingQueryException {
-        SparkSession spark = SparkSession
-                .builder()
-                .master("local[*]")
-                .appName("")
-                .config("spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-                .config("spark.sql.catalog.spark_catalog","org.apache.iceberg.spark.SparkSessionCatalog")
-                .config("spark.sql.catalog.spark_catalog.type","hive")
-                .config("spark.sql.catalog.local","org.apache.iceberg.spark.SparkCatalog")
-                .config("spark.sql.catalog.local.type","hadoop")
-                .config("spark.sql.shuffle.partitions","50") //we are not using AQE then we need to tune this
-                .config("spark.sql.catalog.local.warehouse","warehouse")
-                .config("spark.sql.defaultCatalog","local")
-                .getOrCreate();
+  public static void main(String[] args)
+      throws IOException, TimeoutException, StreamingQueryException {
 
-      spark.sql("""
-        CREATE DATABASE IF NOT EXISTS bigdata;
-      """);
+    JobConfig cfg = JobConfig.fromArgs(args);
+    SparkSession spark = cfg.buildSession("SparkIcebergUtils");
 
-      spark.sql("""
-        USE bigdata;
-      """);
-
-        spark.sql(
-                """
+    spark.sql("CREATE DATABASE IF NOT EXISTS " + JobConfig.DATABASE);
+    spark.sql("USE " + JobConfig.DATABASE);
+    spark.sql(
+        """
                         CREATE TABLE IF NOT EXISTS employee
                               (employee_id bigint,
                               age int,
@@ -60,6 +48,7 @@ public class SparkIcebergUtils {
                               PARTITIONED BY (bucket(8, employee_id), hours(start_date), team)
                               TBLPROPERTIES (
                                         'table_type'='ICEBERG',
+                                        'format-version'='3',
                                         'write.parquet.compression-level'='7',
                                         'format'='parquet',
                                         'commit.retry.num-retries'='10',	--Number of times to retry a commit before failing
@@ -70,9 +59,9 @@ public class SparkIcebergUtils {
                                         'compatibility.snapshot-id-inheritance.enabled'='true' );
                         """);
 
-        if (snapshotExpiration) {
-         // remember to config the tables or look the defaults to see what is going to be deleted
-        spark
+    if (snapshotExpiration) {
+      // remember to config the tables or look the defaults to see what is going to be deleted
+      spark
           .sql(
               """
                         CALL system.expire_snapshots(
@@ -80,11 +69,11 @@ public class SparkIcebergUtils {
                         )
                         """)
           .show();
-        }
-        if(compactionEnabled){
-        spark
+    }
+    if (compactionEnabled) {
+      spark
           .sql(
-                  """
+              """
                               CALL system.rewrite_data_files(
                               table => 'employee',
                                strategy => 'sort',
@@ -96,28 +85,26 @@ public class SparkIcebergUtils {
                                  'max-file-group-size-bytes','10737418240',
                                  'partial-progress.enabled', 'true',
                                  'max-concurrent-file-group-rewrites', '10000',
-                                 'partial-progress.max-commits', '10'                                   
+                                 'partial-progress.max-commits', '10'
                                ))
                                """)
           .show();
 
-        if(removeDuplicates){
-            //iceberg prefer dynamic overwrite, just set it
-            spark.sparkContext().conf().set("spark.sql.sources.partitionOverwriteMode","dynamic");
-            //remove duplicates from a partition or a set of partitions, this query needs to be tested
-            spark
-                    .sql("""
+      if (removeDuplicates) {
+        // iceberg prefer dynamic overwrite, just set it
+        spark.conf().set("spark.sql.sources.partitionOverwriteMode", "dynamic");
+        // remove duplicates from a partition or a set of partitions, this query needs to be tested
+        spark
+            .sql(
+                """
                             INSERT OVERWRITE employee
-                            SELECT employee_id, start_date, first(team),first(role),first(address),first(name)
+                            SELECT employee_id, first(age), start_date, first(team), first(role), first(address), first(name)
                             FROM employee
                             WHERE cast(start_date as date) = '2020-07-01'  -- here we remove from a predefined day
                             GROUP BY employee_id, start_date
-                             """
-                    )
-                    .show();
-        }
+                             """)
+            .show();
+      }
     }
-    }
-
+  }
 }
-

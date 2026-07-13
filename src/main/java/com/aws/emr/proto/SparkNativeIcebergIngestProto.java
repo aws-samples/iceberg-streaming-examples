@@ -3,120 +3,36 @@ package com.aws.emr.proto;
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.protobuf.functions.*;
 
+import com.aws.emr.common.JobConfig;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
 /**
+ * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg
+ * using the native data source and the native Spark/Iceberg writing mechanism ({@code toTable}).
  *
- * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg using the native
- * data source and writing via native Spark/Iceberg writing mechanism
+ * <p>The {@code employee} table is created as an Iceberg format-version 3 (v3) table. Optional
+ * deduplication is done with an event-time watermark. The Spark session, catalog and run
+ * environment are selected through {@link JobConfig} {@code key=value} arguments; see
+ * {@link JobConfig#usage()}.
  *
  * @author acmanjon@amazon.com
  */
-
 public class SparkNativeIcebergIngestProto {
 
-  private static final Logger log = LogManager.getLogger(SparkNativeIcebergIngestProto.class);  private static String master = "";
-
-  private static boolean removeDuplicates = false;
-  private static String protoDescFile = "Employee.desc";
-  private static String icebergWarehouse = "warehouse/";
-  private static String checkpointDir = "tmp/";
-  private static String bootstrapServers = "localhost:9092";
   public static void main(String[] args)
       throws IOException, TimeoutException, StreamingQueryException {
 
-    SparkSession spark = null;
-    if (args.length < 1 ){
-      master="local[*]";
-      log.warn("No arguments provided, running using local default settings: master={} and Iceberg hadoop based file catalog ", master);
-      log.warn( "Iceberg warehouse dir will be 'warehouse/' from the run dir  and the checkpoint directory will be 'tmp/'\n" +
-               " this mode is for local based execution and development. Kafka broker in this case will also be 'localhost:9092'." +
-              " Remember to clean the checkpoint dir for any changes or if you want to start 'clean'");
-      removeDuplicates = false;
-      spark= SparkSession.builder()
-              .master(master)
-              .appName("JavaIoTProtoBufDescriptor2Iceberg")
-              .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-              .config("spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-              .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
-              .config("spark.sql.catalog.spark_catalog.type", "hive")
-              .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
-              .config("spark.sql.catalog.local.type", "hadoop")
-              .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
-              .config("spark.sql.catalog.local.warehouse", "warehouse")
-              .config("spark.sql.defaultCatalog", "local")
-              .getOrCreate();
-    }else if (args.length==1){
-      removeDuplicates = Boolean.parseBoolean(args[0]);
-      master = "local[*]";
-      log.warn("Running with local master: {} and Iceberg hadoop based file catalog  " +
-              "removing duplicates within the watermark is {}", master,removeDuplicates);
-      log.warn( "Iceberg warehouse dir will be 'warehouse/' from the run dir  and the checkpoint directory will be 'tmp/'\n" +
-              " this mode is for local based execution. Kafka broker in this case will also be 'localhost:9092'.");
+    JobConfig cfg = JobConfig.fromArgs(args);
+    SparkSession spark = cfg.buildSession("JavaIoTProtoBufDescriptor2Iceberg");
 
-      spark =SparkSession.builder()
-              .master(master)
-              .appName("JavaIoTProtoBufDescriptor2Iceberg")
-              .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-              .config("spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-              .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
-              .config("spark.sql.catalog.spark_catalog.type", "hive")
-              .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
-              .config("spark.sql.catalog.local.type", "hadoop")
-              .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
-              .config("spark.sql.catalog.local.warehouse", "warehouse")
-              .config("spark.sql.defaultCatalog", "local")
-              .getOrCreate();
-    }else if (args.length ==5){
-      removeDuplicates = Boolean.parseBoolean(args[0]);
-      icebergWarehouse = args[1];
-      protoDescFile = args[2];
-      checkpointDir = args[3];
-      bootstrapServers= args[4];
-      log.warn(
-          "Master will be inferred from the environment Iceberg Glue catalog will be used, with the warehouse being: {} \n "
-              + "removing duplicates within the watermark is {}, the descriptor file is at: {} and the checkpoint is at: {}\n " +
-                  "Kafka bootstrap is: {}",
-          icebergWarehouse,
-          removeDuplicates,
-          protoDescFile,
-          checkpointDir,bootstrapServers);
-      spark =SparkSession.builder()
-              .appName("JavaIoTProtoBufDescriptor2Iceberg")
-              .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-              .config("spark.sql.extensions","org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-              .config("spark.sql.catalog.glue_catalog.warehouse", "org.apache.iceberg.spark.SparkCatalog")
-              .config("spark.sql.catalog.glue_catalog.warehouse", icebergWarehouse)
-              .config("spark.sql.catalog.glue_catalog.catalog-impl", "org.apache.iceberg.aws.glue.GlueCatalog")
-              .config("spark.hadoop.fs.s3.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
-              .config("spark.sql.iceberg.data-prefetch.enabled","true")
-              .config("spark.sql.shuffle.partitions","50") // as we are not using AQE then we need to tune this
-              .config("spark.sql.defaultCatalog", "glue_catalog")
-              .getOrCreate();
-    }else{
-      log.error("Invalid number of arguments provided, please check the readme for the correct usage");
-      System.exit(1);
-    }
-    spark.sql(
-            """
-    CREATE DATABASE IF NOT EXISTS bigdata;
-    """);
-
-    spark.sql(
-            """
-    USE bigdata;
-    """);
-
-
+    spark.sql("CREATE DATABASE IF NOT EXISTS " + JobConfig.DATABASE);
+    spark.sql("USE " + JobConfig.DATABASE);
     spark.sql(
         """
                 CREATE TABLE IF NOT EXISTS employee
@@ -131,6 +47,7 @@ public class SparkNativeIcebergIngestProto {
                       PARTITIONED BY (bucket(32, employee_id), hours(start_date), team)
                       TBLPROPERTIES (
                                 'table_type'='ICEBERG',
+                                'format-version'='3',
                                 'write.parquet.compression-level'='7',
                                 'format'='parquet',
                                 'commit.retry.num-retries'='20',	--Number of times to retry a commit before failing
@@ -141,16 +58,10 @@ public class SparkNativeIcebergIngestProto {
                                 'compatibility.snapshot-id-inheritance.enabled'='true' );
                 """);
 
-    Dataset<Row> df =
-        spark
-            .readStream()
-            .format("kafka")
-            .option("kafka.bootstrap.servers", bootstrapServers)
-            .option("subscribe", "protobuf-demo-topic-pure")
-            .load();
+    Dataset<Row> df = cfg.kafkaStream(spark, "protobuf-demo-topic-pure");
 
     Dataset<Row> output =
-        df.select(from_protobuf(col("value"), "Employee", protoDescFile).as("Employee"))
+        df.select(from_protobuf(col("value"), "Employee", cfg.protoDescriptor()).as("Employee"))
             .select(col("Employee.*"))
             .select(
                 col("id").as("employee_id"),
@@ -161,22 +72,23 @@ public class SparkNativeIcebergIngestProto {
                 col("address"),
                 col("name"));
 
-    if(removeDuplicates){
-    output=output
-       .withWatermark("start_date", "120 seconds")
-       .dropDuplicatesWithinWatermark("start_date","employee_id");
-    }
-    // output.printSchema();
-    StreamingQuery query  =
+    if (cfg.removeDuplicates()) {
+      output =
           output
-              .writeStream()
-              .queryName("streaming-protobuf-ingest")
-              .format("iceberg")
-              .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
-              .outputMode("append")
-              .option("checkpointLocation", "tmp/")  //iceberg native writing requires this to be enabled
-              .option("fanout-enabled", "true") // disable ordering for low latency writes
-              .toTable("employee");
-    query.awaitTermination();
+              .withWatermark("start_date", "120 seconds")
+              .dropDuplicatesWithinWatermark("start_date", "employee_id");
     }
+
+    StreamingQuery query =
+        output
+            .writeStream()
+            .queryName("streaming-protobuf-ingest")
+            .format("iceberg")
+            .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
+            .outputMode("append")
+            .option("checkpointLocation", cfg.checkpointLocation()) // required by iceberg native writing
+            .option("fanout-enabled", "true") // disable ordering for low latency writes
+            .toTable("employee");
+    query.awaitTermination();
+  }
 }

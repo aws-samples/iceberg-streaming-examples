@@ -20,34 +20,49 @@ import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 
 /**
- * An example of consuming messages from Kafka using Protocol Buffers and writing them to Iceberg
- * using the native data source and a custom Spark/Iceberg writing mechanism, this time using a
- * merge-on-read (MoR) table and asynchronous compaction on a scheduled executor.
+ * Shared implementation for the merge-on-read "S3 buckets" IoT examples that write to Amazon S3 or
+ * Amazon S3 Tables with object-storage layout enabled and higher throughput Kafka fetch settings.
  *
- * <p>With Iceberg format-version 3 (v3) the merge-on-read deletes are stored as deletion vectors
- * (Puffin files) instead of the v2 positional delete files, which removes a lot of the write
- * amplification of frequent updates/deletes.
+ * <p>The four public entry points ({@link SparkCustomIcebergIngestMoRS3BucketsAvro},
+ * {@link SparkCustomIcebergIngestMoRS3BucketsORC},
+ * {@link SparkCustomIcebergIngestMoRS3BucketsAutoAvro} and
+ * {@link SparkCustomIcebergIngestMoRS3BucketsAutoORC}) only differ in the target table name and the
+ * Iceberg data/delete file format (Avro or ORC), so they all delegate here to avoid the copy/paste
+ * drift that previously produced bugs (for example the ORC variants writing Avro files, and one
+ * variant inserting into the wrong table).
  *
- * <p>The Spark session, catalog and run environment are selected through {@link JobConfig}
- * {@code key=value} arguments. See {@link JobConfig#usage()}.
+ * <p>All tables are created as Iceberg format-version 3 (v3) merge-on-read tables, so deletes are
+ * written as deletion vectors. The Spark session, catalog and run environment are selected through
+ * {@link JobConfig} {@code key=value} arguments; see {@link JobConfig#usage()}.
  *
  * @author acmanjon@amazon.com
  */
-public class SparkCustomIcebergIngestMoR {
+final class S3BucketsMoRJob {
 
-  private static final Logger log = LogManager.getLogger(SparkCustomIcebergIngestMoR.class);
+  private static final Logger log = LogManager.getLogger(S3BucketsMoRJob.class);
 
-  public static void main(String[] args)
+  private S3BucketsMoRJob() {}
+
+  /**
+   * Run the streaming ingest job.
+   *
+   * @param args the raw program arguments (parsed by {@link JobConfig})
+   * @param appName the Spark application name
+   * @param table the unqualified target table name
+   * @param fileFormat the Iceberg data and delete file format, {@code "avro"} or {@code "orc"}
+   */
+  static void run(String[] args, String appName, String table, String fileFormat)
       throws IOException, TimeoutException, StreamingQueryException {
 
     JobConfig cfg = JobConfig.fromArgs(args);
-    SparkSession spark = cfg.buildSession("JavaIoTProtoBufDescriptor2Iceberg");
+    SparkSession spark = cfg.buildSession(appName);
 
     spark.sql("CREATE DATABASE IF NOT EXISTS " + JobConfig.DATABASE);
     spark.sql("USE " + JobConfig.DATABASE);
     spark.sql(
-        """
-                    CREATE TABLE IF NOT EXISTS employee
+        String.format(
+            """
+                    CREATE TABLE IF NOT EXISTS %1$s
                           (employee_id bigint,
                           age int,
                           start_date timestamp,
@@ -60,9 +75,9 @@ public class SparkCustomIcebergIngestMoR {
                           TBLPROPERTIES (
                                     'table_type'='ICEBERG',
                                     'format-version'='3',
-                                    'write.parquet.compression-level'='7',
-                                    'format'='parquet',
-                                    'write.delete.mode'='copy-on-write',
+                                    'write.format.default'='%2$s',
+                                    'write.delete.format.default'='%2$s',
+                                    'write.delete.mode'='merge-on-read',
                                     'write.update.mode'='merge-on-read',
                                     'write.merge.mode'='merge-on-read',
                                     'write.parquet.row-group-size-bytes' = '134217728',  -- 128MB
@@ -72,6 +87,7 @@ public class SparkCustomIcebergIngestMoR {
                                     'write.delete.distribution-mode' = 'none',
                                     'write.update.distribution-mode' =  'none',
                                     'write.merge.distribution-mode' = 'none',
+                                    'write.object-storage.enabled' = 'true',
                                     'write.spark.fanout.enabled' = 'true',
                                     'write.metadata.delete-after-commit.enabled' = 'false',
                                     'write.metadata.previous-versions-max' = '50',
@@ -82,7 +98,8 @@ public class SparkCustomIcebergIngestMoR {
                                     'write.parquet.compression-codec'='zstd',
                                     -- if you have a huge number of columns remember to tune dict-size and page-size
                                     'compatibility.snapshot-id-inheritance.enabled'='true' );
-                    """);
+                    """,
+            table, fileFormat));
 
     final boolean removeDuplicates = cfg.removeDuplicates();
 
@@ -100,6 +117,8 @@ public class SparkCustomIcebergIngestMoR {
                 col("address"),
                 col("name"));
 
+    final String qualifiedTable = JobConfig.DATABASE + "." + table;
+
     StreamingQuery query =
         output
             .writeStream()
@@ -113,22 +132,19 @@ public class SparkCustomIcebergIngestMoR {
                       log.warn("Writing batch {}", batchId);
                       if (removeDuplicates) {
                         dataframe.createOrReplaceTempView("insert_data");
-                        // here we are pushing some filters like the team and the date (we know that
-                        // we will have late events from hour ago....
-                        // we could improve this filtering by bucket and just merge data from that
-                        // bucket ( using 8 merge queries), one per bucket. Iceberg bucketing can be
-                        // calculated via 'system.bucket(8,employee_id)'.
                         String merge =
-                            """
-                                  MERGE INTO bigdata.employee as t
+                            String.format(
+                                """
+                                  MERGE INTO %1$s as t
                                   USING  insert_data as s
                                   ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
                                   AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
                                   WHEN NOT MATCHED THEN INSERT *
-                                  """;
-                        session.sql((merge));
+                                  """,
+                                qualifiedTable);
+                        session.sql(merge);
                       } else {
-                        dataframe.write().insertInto("bigdata.employee");
+                        dataframe.write().insertInto(qualifiedTable);
                       }
                     })
             .trigger(Trigger.ProcessingTime(1, TimeUnit.MINUTES))
@@ -139,7 +155,7 @@ public class SparkCustomIcebergIngestMoR {
     if (cfg.compaction()) {
       ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
       scheduledExecutor.scheduleAtFixedRate(
-          new Compact(spark), millisToNextHour(), 60 * 60 * 1000, TimeUnit.MILLISECONDS);
+          new Compact(spark, table), millisToNextHour(), 60 * 60 * 1000, TimeUnit.MILLISECONDS);
     }
 
     query.awaitTermination();
@@ -154,22 +170,22 @@ public class SparkCustomIcebergIngestMoR {
 
   private static class Compact implements Runnable {
     private final SparkSession spark;
+    private final String table;
 
-    public Compact(SparkSession spark) {
+    Compact(SparkSession spark, String table) {
       this.spark = spark;
+      this.table = table;
     }
 
     @Override
     public void run() {
-      // the main idea behind this is in cases where you may be receiving late data randomly and
-      // doing the compaction jobs with optimistic concurrency will lead into a lot of conflicts, so
-      // we compact older partitions on a schedule instead.
       log.warn("\nCompaction in progress:\n");
       spark
           .sql(
-              """
+              String.format(
+                  """
                          CALL system.rewrite_data_files(
-                         table => 'employee',
+                         table => '%1$s',
                           strategy => 'sort',
                           sort_order => 'start_date',
                           where => 'start_date >= current_timestamp() - INTERVAL 1 HOURS', -- this sql needs to be adapted to only compact older partitions
@@ -181,19 +197,20 @@ public class SparkCustomIcebergIngestMoR {
                             'max-concurrent-file-group-rewrites', '1000',
                             'partial-progress.max-commits', '10'
                           ))
-                          """)
+                          """,
+                  table))
           .show();
-      // rewrite manifests from time to time
       log.warn("\nManifest compaction in progress:\n");
       spark
           .sql(
-              """
+              String.format(
+                  """
                             CALL system.rewrite_manifests(
-                              table => 'employee'
+                              table => '%1$s'
                              )
-                             """)
+                             """,
+                  table))
           .show();
-      // old snapshots expiration can be done in another job for older partitions.
     }
   }
 }
