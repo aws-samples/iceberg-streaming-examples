@@ -24,11 +24,15 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Dev-only tooling. Installed with `uv sync` (uv installs dependency-groups by default) and
-# used to (re)generate the protobuf python bindings.
+# Dev-only tooling. Installed with `uv sync` (uv installs dependency-groups by default) and used to
+# (re)generate the protobuf python bindings and run the unit tests.
 dev = [
     "grpcio-tools>=1.62",
+    "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [project.scripts]
 iot-custom-ingest = "iceberg_streaming.iot.spark_custom_iceberg_ingest:main"
@@ -46,6 +50,9 @@ avro-parquet-mor = "iceberg_streaming.avro.spark_avro_ingest_mor_parquet:main"
 cdc-log-change = "iceberg_streaming.cdc.spark_log_change:main"
 cdc-mirror = "iceberg_streaming.cdc.spark_cdc_mirror:main"
 cdc-incremental = "iceberg_streaming.cdc.spark_incremental_pipeline:main"
+cdc-streaming-mirror = "iceberg_streaming.cdc.spark_streaming_cdc_mirror:main"
+iceberg-maintenance = "iceberg_streaming.maintenance.iceberg_maintenance:main"
+scenario = "iceberg_streaming.scenarios.runner:main"
 proto-producer = "iceberg_streaming.kafka.proto_producer:main"
 avro-producer = "iceberg_streaming.kafka.avro_producer:main"
 json-producer = "iceberg_streaming.kafka.json_producer:main"

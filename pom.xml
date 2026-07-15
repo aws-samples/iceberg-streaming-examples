@@ -193,9 +193,23 @@
             <version>${kafka.version}</version>
         </dependency>
 
+        <!-- Unit tests (pure-JVM: config parsing and SQL-template invariants; no Spark session). -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
     <build>
         <plugins>
+            <!-- Run the JUnit 5 unit tests. Surefire 3.x has native JUnit Platform support. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-help-plugin</artifactId>

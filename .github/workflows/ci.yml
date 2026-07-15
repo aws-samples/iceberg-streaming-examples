@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  java:
+    name: Java build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "17"
+          cache: maven
+      # Compiles every example and runs the JUnit tests (JobConfig parsing + CDC SQL invariants).
+      # The default `emr` profile keeps Spark/Iceberg as `provided` (on the compile/test classpath).
+      - name: mvn test
+        run: mvn -B -ntp test
+
+  python:
+    name: PySpark lint-imports and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "17"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: uv sync
+        working-directory: python
+        run: uv sync
+      # Runs the pytest suite: JobConfig parsing, CDC SQL invariants, and the entry-point/README
+      # parity checks that fail if a console script is renamed or left undocumented.
+      - name: pytest
+        working-directory: python
+        run: uv run pytest -q
