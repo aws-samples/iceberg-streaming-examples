@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     print(f"Producing {count} CDC records to {TOPIC} on {bootstrap} ...")
     seen: set[int] = set()
-    for _ in range(count):
+    for seq in range(count):
         account_id = random.randint(1, accounts)
         if account_id not in seen:
             operation = "I"
@@ -49,7 +49,9 @@ def main(argv: list[str] | None = None) -> None:
             operation = random.choices(["U", "D"], weights=[9, 1])[0]
         balance = random.randint(0, 1_000_000)
         millis = int(time.time() * 1000)
-        value = f"{operation},{account_id},{balance},{millis}"
+        # DMS-like CSV: operation,account_id,balance,last_updated(epoch millis),seq. The trailing seq
+        # is the monotonic source sequence used downstream for deterministic ordering and stale guards.
+        value = f"{operation},{account_id},{balance},{millis},{seq}"
         producer.send(TOPIC, key=str(account_id), value=value)
     producer.flush()
     producer.close()

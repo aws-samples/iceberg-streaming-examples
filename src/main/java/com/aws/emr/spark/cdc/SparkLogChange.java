@@ -40,7 +40,8 @@ public class SparkLogChange {
                               operation string,
                               account_id bigint,
                               balance bigint,
-                              last_updated timestamp
+                              last_updated timestamp,
+                              seq bigint            -- source sequence (LSN surrogate) for deterministic ordering
                               )
                               PARTITIONED BY (days(last_updated),bucket(8, account_id))
                               TBLPROPERTIES (
@@ -60,7 +61,8 @@ public class SparkLogChange {
 
     var output = df.selectExpr("CAST(value AS STRING)");
 
-    List<String> schemaList = Arrays.asList("operation", "account_id", "balance", "last_updated");
+    // DMS-like CSV: operation,account_id,balance,last_updated(epoch millis),seq
+    List<String> schemaList = Arrays.asList("operation", "account_id", "balance", "last_updated", "seq");
     Column column = functions.col("value");
     Column linesSplit = functions.split(column, ",");
     for (int i = 0; i < schemaList.size(); i++) {
@@ -72,7 +74,8 @@ public class SparkLogChange {
         output
             .withColumn("account_id", col("account_id").cast("integer"))
             .withColumn("balance", col("balance").cast("integer"))
-            .withColumn("last_updated", col("last_updated").divide(1000).cast("timestamp"));
+            .withColumn("last_updated", col("last_updated").divide(1000).cast("timestamp"))
+            .withColumn("seq", col("seq").cast("long"));
     // remember that spark sql does not support epoch milliseconds, so you need to divide it by 1000
     output.printSchema();
     StreamingQuery query =
@@ -82,7 +85,8 @@ public class SparkLogChange {
             .format("iceberg")
             .trigger(Trigger.ProcessingTime(2, TimeUnit.MINUTES))
             .outputMode("append")
-            .option("checkpointLocation", cfg.checkpointLocation()) // required by iceberg native writing
+            // required by iceberg native writing; per-query path so it never collides with other jobs
+            .option("checkpointLocation", cfg.checkpointFor("cdc-log-change"))
             .toTable("accounts_changelog");
 
     query.awaitTermination();

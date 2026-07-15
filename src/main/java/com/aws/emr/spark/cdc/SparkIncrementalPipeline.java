@@ -55,7 +55,8 @@ public class SparkIncrementalPipeline {
                               operation string,
                               account_id bigint,
                               balance bigint,
-                              last_updated timestamp
+                              last_updated timestamp,
+                              seq bigint            -- source sequence (LSN surrogate) for deterministic ordering
                               )
                               PARTITIONED BY (days(last_updated),bucket(8, account_id))
                               TBLPROPERTIES (
@@ -70,7 +71,8 @@ public class SparkIncrementalPipeline {
                         CREATE TABLE IF NOT EXISTS accounts_mirror
                               (account_id bigint,
                               balance float,
-                              last_updated timestamp
+                              last_updated timestamp,
+                              seq bigint            -- last applied source sequence, for stale-change guards
                               )
                               PARTITIONED BY (bucket(8, account_id))
                               TBLPROPERTIES (
@@ -128,32 +130,7 @@ public class SparkIncrementalPipeline {
     CommitMetadata.withCommitProperties(
         Map.of(WATERMARK_KEY, toProcessId),
         () -> {
-          spark.sql(
-              """
-                      WITH windowed_changes AS (
-                          SELECT
-                              account_id,
-                              balance,
-                              last_updated,
-                              operation,
-                              row_number() OVER (
-                                  PARTITION BY account_id
-                                  ORDER BY last_updated DESC) AS row_num
-                          FROM accounts_source
-                      ),
-                      accounts_changes AS (
-                          SELECT * FROM windowed_changes WHERE row_num = 1
-                      )
-                      MERGE INTO accounts_mirror a USING accounts_changes c
-                      ON a.account_id = c.account_id
-                      WHEN MATCHED AND c.operation = 'D' THEN DELETE
-                      WHEN MATCHED THEN UPDATE
-                          SET a.balance = c.balance,
-                              a.last_updated = c.last_updated
-                      WHEN NOT MATCHED AND c.operation != 'D' THEN
-                          INSERT (account_id, balance, last_updated)
-                          VALUES (c.account_id, c.balance, c.last_updated)
-                      """);
+          spark.sql(CdcSql.mirrorMerge("accounts_mirror", "accounts_source"));
           return 0;
         },
         RuntimeException.class);

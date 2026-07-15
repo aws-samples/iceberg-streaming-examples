@@ -33,7 +33,8 @@ public class SparkCDCMirror {
                         CREATE TABLE IF NOT EXISTS accounts_mirror
                               (account_id bigint,
                               balance float,
-                              last_updated timestamp
+                              last_updated timestamp,
+                              seq bigint            -- last applied source sequence, for stale-change guards
                               )
                               PARTITIONED BY (bucket(8, account_id))
                               TBLPROPERTIES (
@@ -52,35 +53,14 @@ public class SparkCDCMirror {
                                         'compatibility.snapshot-id-inheritance.enabled'='true' );
                         """);
 
-    // we just filter changes from the last day as we don't want to scan for the latest change while
-    // deduplicating on a huge dataset. Here we filter by timestamp, but it would be great to use the
-    // advanced incremental techniques from
+    // We only scan changes from the last day so we don't deduplicate over the whole (huge) changelog.
+    // Dedup keeps the highest source sequence per key (deterministic) and the MERGE guards updates and
+    // deletes with c.seq >= a.seq so a stale change can never overwrite newer state. The 1-day filter
+    // is a coarse late-arrival window; for exact incremental reads see SparkIncrementalPipeline and
     // https://tabular.io/apache-iceberg-cookbook/data-engineering-incremental-processing/
     spark.sql(
-        """
-                WITH windowed_changes AS (
-                SELECT
-                    account_id,
-                    balance,
-                    last_updated,
-                    operation,
-                    row_number() OVER (
-                        PARTITION BY account_id
-                        ORDER BY last_updated DESC) AS row_num
-                FROM accounts_changelog where last_updated > current_timestamp() - INTERVAL 1 DAY
-                ),
-                accounts_changes AS (
-                    SELECT * FROM windowed_changes WHERE row_num = 1
-                )
-                MERGE INTO accounts_mirror a USING accounts_changes c
-                ON a.account_id = c.account_id
-                WHEN MATCHED AND c.operation = 'D' THEN DELETE
-                WHEN MATCHED THEN UPDATE
-                    SET a.balance = c.balance,
-                        a.last_updated = c.last_updated
-                WHEN NOT MATCHED AND c.operation != 'D' THEN
-                    INSERT (account_id, balance, last_updated)
-                    VALUES (c.account_id, c.balance, c.last_updated);
-""");
+        CdcSql.mirrorMerge(
+            "accounts_mirror",
+            "(SELECT * FROM accounts_changelog WHERE last_updated > current_timestamp() - INTERVAL 1 DAY) src"));
   }
 }

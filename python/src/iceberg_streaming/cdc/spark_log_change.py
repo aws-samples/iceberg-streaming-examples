@@ -18,7 +18,8 @@ _CREATE_TABLE = """
           operation string,
           account_id bigint,
           balance bigint,
-          last_updated timestamp
+          last_updated timestamp,
+          seq bigint            -- source sequence (LSN surrogate) for deterministic ordering
           )
           PARTITIONED BY (days(last_updated), bucket(8, account_id))
           TBLPROPERTIES (
@@ -33,7 +34,8 @@ _CREATE_TABLE = """
                     'compatibility.snapshot-id-inheritance.enabled'='true' )
 """
 
-_SCHEMA = ["operation", "account_id", "balance", "last_updated"]
+# DMS-like CSV: operation,account_id,balance,last_updated(epoch millis),seq
+_SCHEMA = ["operation", "account_id", "balance", "last_updated", "seq"]
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -57,6 +59,7 @@ def main(argv: list[str] | None = None) -> None:
         .withColumn("balance", F.col("balance").cast("integer"))
         # spark sql does not support epoch millis, so divide by 1000 to get seconds
         .withColumn("last_updated", (F.col("last_updated") / 1000).cast("timestamp"))
+        .withColumn("seq", F.col("seq").cast("long"))
     )
     output.printSchema()
 
@@ -65,7 +68,8 @@ def main(argv: list[str] | None = None) -> None:
         .format("iceberg")
         .trigger(processingTime="2 minutes")
         .outputMode("append")
-        .option("checkpointLocation", cfg.checkpoint_location)
+        # per-query checkpoint so it never collides with the other streaming examples
+        .option("checkpointLocation", cfg.checkpoint_for("cdc-log-change"))
         .toTable("accounts_changelog")
     )
     query.awaitTermination()
