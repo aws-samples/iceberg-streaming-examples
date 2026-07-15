@@ -30,6 +30,27 @@ public class KafkaCDCSimulator{
     private static final org.apache.logging.log4j.Logger log = LogManager.getLogger(KafkaCDCSimulator.class);
 
     private static final SplittableRandom sr = new SplittableRandom();
+
+    /**
+     * Monotonically increasing source sequence stamped on every record. It stands in for a database
+     * change LSN and gives the downstream MERGE a deterministic total order across keys, partitions
+     * and retries (see {@link com.aws.emr.spark.cdc.CdcSql}). AtomicLong so it stays correct if the
+     * producer is ever made multi-threaded.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * Hot key space: a small set of accounts that get updated/deleted over and over, so the same
+     * data files are rewritten again and again (heavy row-level delete churn on the same files).
+     */
+    private static final int HOT_KEYS = 100_000;
+
+    /**
+     * Full key space including the long tail. New tail keys keep growing the table and its data-file
+     * count, so deletes are scattered across many files rather than the whole table being rewritten.
+     */
+    private static final int TOTAL_KEYS = 2_000_000;
+
     /**
      * The constant bootstrapServers.
      */
@@ -74,11 +95,21 @@ public class KafkaCDCSimulator{
 
     public String createCDCRecord() {
 
-        // simulate
-        int id=sr.nextInt(10000);
-        int balance=sr.nextInt(1000,10000);
+        // 80% of the changes hit the small "hot" key set (the same accounts -> the same data files
+        // are rewritten again and again, so row-level delete files accumulate on them), the other
+        // 20% spread across the large long-tail space (keeps growing the table and its data-file
+        // count). This scatter + repetition is what makes v2 positional delete files pile up on the
+        // hot data files while v3 keeps a single merged deletion vector per file.
+        int id = (sr.nextInt(100) < 80) ? sr.nextInt(HOT_KEYS) : sr.nextInt(TOTAL_KEYS);
+        // ~85% updates, ~15% deletes. A delete removes the row; a later update on the same key
+        // re-inserts it -> even more delete/insert churn on the hot files.
+        String operation = (sr.nextInt(100) < 15) ? "D" : "U";
+        int balance = sr.nextInt(1000, 10000);
         Instant instant = Instant.now();
-        return "U,"+Integer.toString(id)+","+Integer.toString(balance)+","+Long.toString(instant.toEpochMilli());
+        // DMS-like CSV: operation,account_id,balance,last_updated(epoch millis),seq. The trailing seq
+        // is the source sequence used downstream to order changes deterministically and to guard
+        // against stale updates/deletes overwriting newer state.
+        return operation + "," + id + "," + balance + "," + instant.toEpochMilli() + "," + SEQ.getAndIncrement();
     }
 
     /**

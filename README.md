@@ -76,12 +76,28 @@ locally (the standard AWS credential chain is used).
 
 ### A note on Iceberg v3 tables
 
-All of the examples create their tables as **Apache Iceberg format-version 3 (v3)** tables
+Most examples create their tables as **Apache Iceberg format-version 3 (v3)** tables
 (`'format-version'='3'` in the `TBLPROPERTIES`). Iceberg v3 became production ready with Apache
 Iceberg 1.11.0 and brings, among other things, deletion vectors (used automatically by the
 merge-on-read examples instead of v2 positional delete files), row lineage, the VARIANT type,
 default column values, nanosecond timestamps and multi-argument partition transforms. The
 merge-on-read jobs therefore write more efficient row-level deletes out of the box on v3.
+
+The exceptions are deliberate: `SparkStreamingCDCMirror` / `cdc-streaming-mirror` takes `fv=2|3` so
+you can A/B the two delete encodings, and the `SparkS3TablesMergeV2` / `SparkCDCReadBenchmark`
+benchmark classes create v2 tables on purpose.
+
+**Runtime / version compatibility.** v3 (and deletion vectors) needs Iceberg **1.11.0+**. This repo
+pins that locally, but a managed runtime may ship an older Iceberg, so confirm before assuming v3
+behaviour:
+
+| Where | Spark | Iceberg | Notes |
+|---|---|---|---|
+| Local (this repo) | 4.0.2 | 1.11.0 (pinned in `pom.xml` / `pyproject.toml`) | full v3 + deletion vectors |
+| EMR `emr-spark-8.0.0` | 4.0.2 | provided by the runtime — verify the label ships ≥ 1.11 | if it ships 1.10.x, v3 tables may not behave as documented |
+
+Because the EMR profile marks Iceberg `provided`, the cloud runtime — not this build — decides the
+effective Iceberg version. Check it on your target release before running the v3 examples there.
 
 ### A note on performance
 
@@ -100,11 +116,12 @@ Another good read can be seen on this blog from Cloudera: [Optimization Strategi
 
 ## PySpark alternative (`python/`)
 
-A complete **PySpark** counterpart of these examples lives in the [`python/`](python/) folder,
-managed with [`uv`](https://docs.astral.sh/uv/). Every Spark job here is replicated in Python, uses
+A **PySpark** counterpart of these examples lives in the [`python/`](python/) folder,
+managed with [`uv`](https://docs.astral.sh/uv/). Most Spark jobs here are replicated in Python (see
+the [Pattern and parity matrix](#pattern-and-parity-matrix) for the intentional exceptions), using
 the **same unified `key=value` arguments** and the same three run scenarios (local, local on
-S3/S3 Tables, and EMR on S3/S3 Tables), and creates the same **Iceberg format-version 3 (v3)**
-tables. The shared `com.aws.emr.common.JobConfig` helper is mirrored by
+S3/S3 Tables, and EMR on S3/S3 Tables), and creating **Iceberg format-version 3 (v3)** tables by
+default. The shared `com.aws.emr.common.JobConfig` helper is mirrored by
 `iceberg_streaming.common.jobconfig`, which additionally wires up `spark.jars.packages` so that
 local runs pull the Kafka/Avro/Protobuf connectors and the Iceberg 4.0 / S3 Tables runtimes from
 Maven Central (on EMR those are provided by the runtime).
@@ -121,16 +138,38 @@ uv run iot-custom-ingest catalog=glue warehouse=s3://your-bucket/warehouse boots
 #   spark-submit ... iceberg_streaming/iot/spark_custom_iceberg_ingest.py runtime=emr catalog=glue warehouse=s3://...
 ```
 
-Console entry points exist for every job (`iot-mor`, `proto-native`, `proto-udf`, `avro-native`,
-`cdc-log-change`, `cdc-mirror`, `cdc-incremental`, the `iot-s3buckets-*` variants, `iceberg-utils`)
-plus native Kafka producers/consumers (`proto-producer`, `avro-producer`, `json-producer`,
-`cdc-simulator`, `proto-consumer`, `avro-consumer`). See [`python/README.md`](python/README.md) for
-the full table, setup, protobuf-binding generation and troubleshooting.
+Console entry points exist for the jobs (`iot-mor`, `proto-native`, `proto-udf`, `avro-native`,
+`avro-parquet-mor`, `cdc-log-change`, `cdc-mirror`, `cdc-incremental`, `cdc-streaming-mirror`, the
+`iot-s3buckets-*` variants, `iceberg-utils`, `iceberg-maintenance`) plus native Kafka
+producers/consumers (`proto-producer`, `avro-producer`, `json-producer`, `cdc-simulator`,
+`proto-consumer`, `avro-consumer`). See [`python/README.md`](python/README.md) for the full table,
+setup, protobuf-binding generation and troubleshooting.
 
 Differences from the Java project: the AWS Glue Schema Registry clients (including the
 `SparkProtoRegistry` Spark consumer) are **not** ported — there is no first-class Python Glue Schema
 Registry serde and that deserializer is JVM-only, so use the Java jobs for the Glue Schema Registry
 scenarios. The JSON example is a plain native JSON producer/consumer.
+
+## Pattern and parity matrix
+
+The repository is organised around **streaming + Iceberg patterns**, each implemented in Java and,
+where noted, PySpark. Entry points are Java classes under `src/main/java/com/aws/emr/...` and the
+matching PySpark console scripts in [`python/pyproject.toml`](python/pyproject.toml) (the
+`test_entrypoints_parity` test fails CI if a script is renamed or left undocumented).
+
+| Pattern | Java | PySpark | Equivalent? | Notes |
+|---|---|---|---|---|
+| Protobuf ingestion (native, UDF) | `SparkNativeIcebergIngestProto`, `SparkProtoUDF` | `proto-native`, `proto-udf` | Yes | |
+| Avro ingestion (native, MoR→parquet) | `SparkNativeIcebergIngestAvro`, `...MoRAvroParquet` | `avro-native`, `avro-parquet-mor` | Yes | |
+| Custom `foreachBatch` (MERGE dedup + in-job compaction) | `SparkCustomIcebergIngest` | `iot-custom-ingest` | Yes | dedup = *bounded replay suppression*, not global upsert |
+| Merge-on-read variants / S3-bucket sinks | `SparkCustomIcebergIngestMoR`, `S3Buckets*` | `iot-mor`, `iot-s3buckets-*` | Yes | |
+| CDC changelog writer | `SparkLogChange` | `cdc-log-change` | Yes | now persists a `seq` column |
+| CDC mirror (batch MERGE) | `SparkCDCMirror` | `cdc-mirror` | Yes | deterministic + guarded MERGE |
+| CDC incremental (snapshot range) | `SparkIncrementalPipeline` | `cdc-incremental` | Partial | Python watermark is a separate commit, not atomic |
+| CDC streaming mirror (continuous) | `SparkStreamingCDCMirror` | `cdc-streaming-mirror` | Yes | parameterised `table`/`fv`/`fanout`/`manifestmerge` |
+| Table maintenance (compaction, manifests, expire, orphans) | `IcebergMaintenance` | `iceberg-maintenance` | Yes | recommended standalone baseline |
+| Glue Schema Registry (producers/consumers/Spark) | `*SchemaRegistry`, `SparkProtoRegistry` | — | Intentional | JVM-only GSR serde |
+| S3 Tables v2/v3 benchmark + SPJ | `SparkS3TablesMergeV2/V3`, `SparkS3TablesTwoQuerySpj`, `SparkCDCReadBenchmark` | — | Benchmark-only | not ported |
 
 ## IoT Scenarios
 
@@ -271,22 +310,55 @@ per key with a windowed `row_number()`, then merge that single row per key into 
 The three `WHEN` branches map the CDC operation to a row-level action: a `D` on a matched key becomes
 a `DELETE`, any other matched key is an `UPDATE`, and a new key that is not a delete is an `INSERT`.
 On the v3 `merge-on-read` target the deletes are written as deletion vectors, so the merge stays
-cheap on the write path. This is the core of `SparkCDCMirror`:
+cheap on the write path. The SQL is generated in one place — `com.aws.emr.spark.cdc.CdcSql` (Java) and
+`iceberg_streaming.cdc._sql` (Python) — and shared by the batch (`SparkCDCMirror`), snapshot-incremental
+(`SparkIncrementalPipeline`) and continuous (`SparkStreamingCDCMirror`) jobs so they cannot drift:
 
 ```sql
 WITH windowed_changes AS (
-    SELECT account_id, balance, last_updated, operation,
-           row_number() OVER (PARTITION BY account_id ORDER BY last_updated DESC) AS row_num
+    SELECT account_id, balance, last_updated, operation, seq,
+           row_number() OVER (PARTITION BY account_id ORDER BY seq DESC) AS row_num
     FROM accounts_changelog WHERE last_updated > current_timestamp() - INTERVAL 1 DAY
 ),
 accounts_changes AS (SELECT * FROM windowed_changes WHERE row_num = 1)
 MERGE INTO accounts_mirror a USING accounts_changes c
 ON a.account_id = c.account_id
-WHEN MATCHED AND c.operation = 'D' THEN DELETE
-WHEN MATCHED THEN UPDATE SET a.balance = c.balance, a.last_updated = c.last_updated
+WHEN MATCHED AND c.operation = 'D' AND c.seq >= a.seq THEN DELETE
+WHEN MATCHED AND c.seq >= a.seq THEN UPDATE SET a.balance = c.balance, a.last_updated = c.last_updated, a.seq = c.seq
 WHEN NOT MATCHED AND c.operation != 'D' THEN
-    INSERT (account_id, balance, last_updated) VALUES (c.account_id, c.balance, c.last_updated)
+    INSERT (account_id, balance, last_updated, seq) VALUES (c.account_id, c.balance, c.last_updated, c.seq)
 ```
+
+#### CDC correctness: deterministic ordering and stale-change guards
+
+A CDC feed can deliver changes for the same key out of order — different Kafka partitions, producer
+retries, or a later micro-batch that happens to carry an older event. Two rules keep the mirror
+correct regardless of arrival order, and both are enforced by the shared SQL above:
+
+1. **Deterministic dedup by source sequence.** The producer (`KafkaCDCSimulator` / `cdc-simulator`)
+   stamps every record with a monotonic `seq` (a stand-in for a database log sequence number / LSN).
+   The dedup window orders by `seq DESC`, *not* by `last_updated` — two changes with the same
+   millisecond timestamp would otherwise pick UPDATE vs DELETE arbitrarily. `seq` flows all the way
+   through: the changelog table stores it, and the mirror table stores the last applied `seq` per row.
+2. **Stale-change guards.** The matched UPDATE and DELETE branches only fire when `c.seq >= a.seq`, so
+   an older event arriving in a later batch can never overwrite or delete newer state.
+
+**Known residual limitation (documented, not hidden).** This mirror uses **physical deletes** — the
+row is removed — which is deliberate: deleting matched rows on a merge-on-read target is exactly what
+exercises v2 positional delete files vs v3 deletion vectors in the benchmark. The trade-off is the
+classic CDC "resurrection" case: if a truly stale insert/update for a key arrives *after* that key was
+legitimately deleted, the `WHEN NOT MATCHED` branch re-inserts it, because a physically deleted row
+leaves no `seq` to compare against. Removing that resurrection requires keeping **tombstones**. The
+four standard options are:
+
+1. Preserve source ordering via an LSN/sequence and keep tombstones (soft-delete rows) until a later
+   maintenance pass removes them.
+2. Require all events for a key on the same Kafka partition and document the ordering assumption.
+3. Maintain a separate latest-sequence / tombstone table and consult it in the `NOT MATCHED` branch.
+4. Use soft deletes in the mirror and physically remove rows in a scheduled job.
+
+This showcase keeps physical deletes (option 4 without the scheduled purge) on purpose so the v2/v3
+delete-encoding comparison stays meaningful; adapt to your own durability needs.
 
 #### Restrict the affected partitions in the `ON` clause
 
@@ -350,6 +422,27 @@ CALL system.rewrite_data_files(
   ))
 ```
 
+#### Rewrite manifests from time to time
+
+Every commit adds new manifest files, and a fast streaming trigger with delete-heavy MERGEs produces
+a lot of small ones. As the manifest list grows, query planning slows down and each commit has more
+metadata to reconcile — and if you leave synchronous manifest merge-on-commit enabled
+(`commit.manifest-merge.enabled`, on by default) that reconciliation cost is paid on the write path on
+every commit, which under heavy churn can stall the stream. `rewrite_manifests` rebuilds the current
+manifests into a few well-sized ones. It is a metadata-only operation (it does not rewrite data files),
+so it is cheap, but it still commits against the table, so run it *less* often than data compaction.
+`SparkCustomIcebergIngest` calls it every 30 batches, versus every 10 for `rewrite_data_files`:
+
+```sql
+CALL system.rewrite_manifests(table => 'employee')
+```
+
+`commit.manifest-merge.enabled` and an explicit `rewrite_manifests` are complementary: the former
+merges manifests inline on each commit, the latter rebalances them in bulk on a cadence. Rewriting them
+explicitly from the job keeps manifest counts bounded without paying the merge cost on every single
+commit, and — like the data-file rewrite — it competes with the streaming writer for commits, which is
+one more reason the commit retries above matter.
+
 #### Expire old metadata files automatically
 
 Every commit writes a new table `metadata.json`, and with a fast streaming trigger these pile up
@@ -364,6 +457,86 @@ ever-growing list:
 
 Snapshot and orphan-file expiration are a separate concern and are best left to a dedicated
 maintenance job over older partitions.
+
+#### Run maintenance from a dedicated job (recommended)
+
+Running compaction inside `foreachBatch` (as `SparkCustomIcebergIngest` does) is a useful thing to
+*demonstrate*, but it competes with the writer for commits and lengthens batches. The recommended
+baseline is a **separate scheduled maintenance job**, provided here as `IcebergMaintenance` (Java) /
+`iceberg-maintenance` (PySpark). It bundles the four standard actions behind one entry point —
+`rewrite_data_files` (with partial progress), `rewrite_manifests`, `expire_snapshots` and
+`remove_orphan_files` — plus a read-only `dry-run=true` report mode that prints snapshot / manifest /
+data-file counts without mutating anything:
+
+```bash
+# report only (no mutation)
+uv run iceberg-maintenance table=accounts_mirror action=all dry-run=true
+# compact just the recent partitions, then rebalance manifests
+uv run iceberg-maintenance table=accounts_mirror action=rewrite_data_files \
+    where="last_updated >= current_timestamp() - INTERVAL 2 DAYS"
+# expire snapshots older than 7 days, keeping at least 100
+uv run iceberg-maintenance table=accounts_mirror action=expire_snapshots older-than-days=7 retain-last=100
+```
+
+`remove_orphan_files` deletes files no snapshot references, so keep `older-than-days` comfortably
+larger than your longest in-flight write/compaction when running it against a live table.
+
+## Observability, testing and reproducibility
+
+### Streaming progress metrics
+
+Rather than eyeballing the Spark UI, the streaming jobs attach a `StreamingQueryListener` that logs a
+concise, grep-friendly line after every micro-batch — batch id, input rows, input/processed
+rows-per-second and the trigger/addBatch durations — prefixed with `[stream-progress]` and formatted
+as `key=value` so it parses into CSV/JSON. It is `com.aws.emr.common.StreamingProgressListener`
+(`StreamingProgressListener.attach(spark)`) in Java and
+`iceberg_streaming.common.observability.attach_progress_listener(spark)` in Python. This is what makes
+an A/B run (for example Iceberg v2 vs v3) objectively comparable. To compare v2 and v3 read latency on
+a frozen snapshot, `SparkCDCReadBenchmark` writes a stable result rather than relying on log scraping.
+
+### Reproducibility knobs
+
+The pieces you need for a deterministic replay are wired into `JobConfig`:
+
+- **Unique checkpoints.** Streaming jobs derive a per-query checkpoint with `checkpointFor(name)` /
+  `checkpoint_for(name)`, so launching several examples with the same `checkpoint=` base never
+  collides on incompatible state. Every streaming query needs its own checkpoint.
+- **Explicit offsets.** `startingOffsets=earliest` replays a pre-loaded topic from the beginning;
+  `maxOffsetsPerTrigger=<n>` bounds each micro-batch; `failOnDataLoss=false` survives an aged-out
+  offset on a short-retention demo topic.
+- **Fixed input.** `cdc-simulator count=<n> accounts=<n>` produces a bounded, `seq`-stamped dataset.
+
+### Deterministic scenario harness
+
+A self-checking end-to-end harness ships in the PySpark project
+([`python/src/iceberg_streaming/scenarios/`](python/src/iceberg_streaming/scenarios/), console script
+`scenario`). It seeds a fixed, `seed`-controlled CDC dataset, runs it through the **same shared guarded
+MERGE** the jobs use, in bounded micro-batches, then asserts the final Iceberg table state against a
+pure-Python oracle and reports metadata (snapshots, data files, delete files). It runs locally (no
+AWS) from either an in-memory source (default, no broker) or a real Kafka topic consumed with
+`Trigger.AvailableNow`:
+
+```bash
+cd python
+uv run scenario cdc-out-of-order            # shuffled, multi-batch: stale updates must not overwrite newer rows
+uv run scenario all                         # every scenario; non-zero exit if any final state is wrong
+uv run scenario cdc-ordered source=kafka bootstrap=localhost:9092
+```
+
+Implemented scenarios: `append-only`, `cdc-ordered`, `cdc-out-of-order` (the regression test for the
+`seq` guards), `resurrection-demo` (reproduces and asserts the documented physical-delete limitation),
+and `mor-v2` / `mor-v3` (identical final state, different delete encoding). The pure oracle
+(`events.py`) is unit-tested in CI; the Spark+Kafka execution is a local lab tool. Other names from
+the list above (`event-time-dedup`, `global-upsert`, `maintenance-concurrent`, `snapshot-incremental`,
+`storage-partitioned-join`) are the roadmap for extending the harness.
+
+### Tests and CI
+
+- **Java:** `mvn test` runs JUnit tests for `JobConfig` argument parsing and for the CDC MERGE SQL
+  invariants (`CdcSqlTest` asserts the `seq` ordering and the `c.seq >= a.seq` guards).
+- **PySpark:** `cd python && uv run pytest` runs the same config/SQL invariants plus an
+  entry-point/README parity test that fails if a console script is renamed or left undocumented.
+- **CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs both on every push and PR.
 
 ## Requirements
 

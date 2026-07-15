@@ -45,9 +45,9 @@ _CREATE_TABLE = """
                     'write.parquet.page-size-bytes' = '1048576',
                     'write.target-file-size-bytes' = '536870912',
                     'write.distribution-mode' = 'hash',
-                    'write.delete.distribution-mode' = 'none',
-                    'write.update.distribution-mode' = 'none',
-                    'write.merge.distribution-mode' = 'none',
+                    'write.delete.distribution-mode' = 'hash',
+                    'write.update.distribution-mode' = 'hash',
+                    'write.merge.distribution-mode' = 'hash',
                     'write.spark.fanout.enabled' = 'true',
                     'write.metadata.delete-after-commit.enabled' = 'false',
                     'write.metadata.previous-versions-max' = '50',
@@ -59,9 +59,19 @@ _CREATE_TABLE = """
                     'compatibility.snapshot-id-inheritance.enabled'='true' )
 """
 
+# Deduplicate the micro-batch first (keep the latest row per employee_id by start_date) so a key
+# resent within the same batch is not inserted twice, then MERGE only new keys into the target.
 _MERGE = """
     MERGE INTO bigdata.employee AS t
-    USING insert_data AS s
+    USING (
+        SELECT employee_id, age, start_date, team, role, address, name
+        FROM (
+            SELECT *, row_number() OVER (
+                       PARTITION BY employee_id ORDER BY start_date DESC) AS row_num
+            FROM insert_data
+        )
+        WHERE row_num = 1
+    ) AS s
     ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
     AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
     WHEN NOT MATCHED THEN INSERT *
@@ -72,6 +82,10 @@ def _make_foreach_batch(remove_duplicates: bool):
     def process_batch(batch_df, batch_id: int) -> None:
         session = batch_df.sparkSession
         log.warning("Writing batch %s", batch_id)
+        # Skip empty micro-batches: no data to merge/insert on an idle trigger.
+        if batch_df.isEmpty():
+            log.warning("Batch %s is empty, skipping", batch_id)
+            return
         if remove_duplicates:
             batch_df.createOrReplaceTempView("insert_data")
             session.sql(_MERGE)
