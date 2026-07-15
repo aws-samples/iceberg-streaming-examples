@@ -127,6 +127,60 @@ What used to be ten-plus nearly identical classes is now the same two ingest job
 ... SparkCustomIcebergIngest trigger=availablenow startingOffsets=earliest
 ```
 
+### Quick start: the IoT scenario locally (docker compose, v3 tables)
+
+The complete pipeline - Kafka broker, dev-profile build, telemetry producer and the Spark ingest
+job writing an Iceberg **v3** table (`fv=3` is the default) to the local Hadoop catalog under
+`./warehouse` - is one command:
+
+```bash
+scripts/run-local.sh dedup=merge compaction=inline
+```
+
+The script brings the broker up, builds the jar, starts the producer in the background and runs
+`SparkCustomIcebergIngest` in the foreground (Spark UI on http://localhost:4040, Ctrl-C stops
+everything). Any `key=value` argument is forwarded to both the producer and the job, so the whole
+knob matrix works from here (`source=avro`, `mode=mor fileformat=orc`, `fv=2`, ...).
+
+If you prefer to run the pieces yourself:
+
+```bash
+# 1. Kafka broker (KRaft, official apache/kafka image) on localhost:9092
+docker compose up -d
+
+# 2. Build the local uber-jar (dev profile bundles Spark + Iceberg 1.11)
+mvn -Pdev clean package -DskipTests
+
+# 3. Spark 4 on Java 17 needs the JVM module options (spark-submit injects these for you;
+#    running with plain `java` you must pass them - same list as the IDE section below)
+export SPARK_JVM_FLAGS="-XX:+IgnoreUnrecognizedVMOptions --add-modules=jdk.incubator.vector --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED -Djdk.reflect.useDirectMethodHandle=false -Dio.netty.tryReflectionSetAccessible=true"
+
+# 4. Terminal A: produce EV telemetry (protobuf; unthrottled - use rate=/count= to bound it)
+java -cp target/streaming-iceberg-ingest-1.0-SNAPSHOT.jar \
+  com.aws.emr.kafka.TelemetryProducer format=proto
+
+# 5. Terminal B: ingest into the Iceberg v3 table bigdata.vehicle_telemetry (./warehouse)
+java $SPARK_JVM_FLAGS -cp target/streaming-iceberg-ingest-1.0-SNAPSHOT.jar \
+  com.aws.emr.spark.iot.SparkCustomIcebergIngest \
+  startingOffsets=earliest dedup=merge compaction=inline
+```
+
+Watch the `[stream-progress]` lines for per-batch throughput. To verify what landed without any
+extra tooling, use the maintenance job's read-only report (snapshot / manifest / data-file counts):
+
+```bash
+java $SPARK_JVM_FLAGS -cp target/streaming-iceberg-ingest-1.0-SNAPSHOT.jar \
+  com.aws.emr.spark.maintenance.IcebergMaintenance table=vehicle_telemetry dry-run=true
+```
+
+The PySpark equivalent (same broker, same v3 defaults):
+
+```bash
+cd python && uv sync
+uv run telemetry-producer format=proto count=1000000     # terminal A
+uv run iot-custom-ingest startingOffsets=earliest dedup=merge   # terminal B
+```
+
 ### A note on Iceberg v3 tables
 
 Tables are created as **Apache Iceberg format-version 3 (v3)** by default (`fv=3`). Iceberg v3
