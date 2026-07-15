@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 #
-# Local end-to-end demo pipeline:
+# Local end-to-end EV telemetry demo pipeline:
 #   1. Ensures the dockerized Kafka (KRaft, apache/kafka) is up.
 #   2. Builds the local (dev-profile) uber-jar if needed (Spark/Iceberg bundled).
-#   3. Starts the native Protocol Buffers producer  -> Kafka topic 'protobuf-demo-topic-pure'.
-#   4. Runs SparkCustomIcebergIngestMoRS3BucketsAvro in local mode: it consumes that protobuf
-#      stream and writes an Iceberg format-version 3 (v3) MERGE-ON-READ table
-#      'bigdata.employee_avro_uncompacted' whose data/delete files are in AVRO format, under the
-#      local Hadoop catalog in ./warehouse.
+#   3. Starts the telemetry producer -> Kafka topic 'telemetry-<source>'.
+#   4. Runs SparkCustomIcebergIngest in local mode against the same source format, writing the
+#      Iceberg table 'bigdata.vehicle_telemetry' under ./warehouse (local Hadoop catalog).
 #
-# NOTE: the "Avro" in the class name is the Iceberg *on-disk file format*
-#       ('write.format.default'='avro'); the Kafka payload is Protocol Buffers, so this pipeline
-#       uses the protobuf producer (ProtoProducer), not the Avro producer.
+# Every key=value argument you pass is forwarded to BOTH the producer and the Spark job, so the
+# whole knob matrix is available from here, e.g.:
 #
-# Usage:
-#   scripts/run-local-mor-avro.sh
+#   scripts/run-local.sh                                    # protobuf, CoW parquet v3, no dedup
+#   scripts/run-local.sh source=avro mode=mor fileformat=orc dedup=merge
+#   scripts/run-local.sh source=json corrupt=true dedup=batch      # feeds the dead-letter table
+#   scripts/run-local.sh dedup=merge compaction=inline fv=2
+#
+# The Spark UI is available at http://localhost:4040 while the streaming query runs.
 #
 # Environment overrides:
 #   SKIP_BUILD=1        reuse the existing target/*.jar instead of rebuilding
@@ -28,9 +29,16 @@ cd "$REPO_DIR"
 
 JAR="target/streaming-iceberg-ingest-1.0-SNAPSHOT.jar"
 BOOTSTRAP="${BOOTSTRAP:-localhost:9092}"
-DESCRIPTOR="src/main/protobuf/Employee.desc"
-PRODUCER_CLASS="com.aws.emr.proto.kafka.producer.ProtoProducer"
-JOB_CLASS="com.aws.emr.spark.iot.SparkCustomIcebergIngestMoRS3BucketsAvro"
+PRODUCER_CLASS="com.aws.emr.kafka.TelemetryProducer"
+JOB_CLASS="com.aws.emr.spark.iot.SparkCustomIcebergIngest"
+
+# Default source; overridden when the caller passes source=...
+SOURCE="proto"
+for arg in "$@"; do
+  case "$arg" in
+    source=*) SOURCE="${arg#source=}" ;;
+  esac
+done
 
 # --- Java 17 (Apache Spark 4.0 requires JDK 17 or 21) --------------------------------------------
 if [ -z "${JAVA_HOME:-}" ] || ! "${JAVA_HOME}/bin/java" -version 2>&1 | grep -q 'version "17'; then
@@ -65,11 +73,9 @@ MODULE_OPTS=(
   -Dio.netty.tryReflectionSetAccessible=true
 )
 
-# --- 1. Kafka ------------------------------------------------------------------------------------
 echo "==> Ensuring Kafka is up (docker compose)"
 docker compose up -d
 
-# --- 2. Build ------------------------------------------------------------------------------------
 if [ "${SKIP_BUILD:-0}" = "1" ] && [ -f "$JAR" ]; then
   echo "==> SKIP_BUILD=1, reusing $JAR"
 else
@@ -77,15 +83,13 @@ else
   mvn -Pdev -q clean package -DskipTests
 fi
 
-# --- 3. Fresh local state ------------------------------------------------------------------------
 if [ "${KEEP_DATA:-0}" != "1" ]; then
   echo "==> Cleaning ./warehouse and ./tmp for a fresh start (set KEEP_DATA=1 to keep)"
   rm -rf warehouse tmp
 fi
 
-# --- 4. Producer (background) --------------------------------------------------------------------
-echo "==> Starting protobuf producer -> topic protobuf-demo-topic-pure (bootstrap=$BOOTSTRAP)"
-"$JAVA" -cp "$JAR" "$PRODUCER_CLASS" "$BOOTSTRAP" &
+echo "==> Starting telemetry producer -> topic telemetry-$SOURCE (bootstrap=$BOOTSTRAP)"
+"$JAVA" -cp "$JAR" "$PRODUCER_CLASS" bootstrap="$BOOTSTRAP" "$@" &
 PRODUCER_PID=$!
 
 cleanup() {
@@ -95,13 +99,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Give the producer a moment to start emitting.
 sleep 3
 
-# --- 5. Spark streaming job (foreground) ---------------------------------------------------------
-echo "==> Running $JOB_CLASS (local, hadoop catalog, Avro-format MoR v3 table)"
-echo "    Target table: bigdata.employee_avro_uncompacted  (warehouse=./warehouse)"
+echo "==> Running $JOB_CLASS (local, hadoop catalog, source=$SOURCE)"
+echo "    Target table: bigdata.vehicle_telemetry  (warehouse=./warehouse)"
+echo "    Spark UI:     http://localhost:4040"
 echo "    Press Ctrl-C to stop the whole pipeline."
 "$JAVA" "${MODULE_OPTS[@]}" -cp "$JAR" "$JOB_CLASS" \
   runtime=local catalog=local warehouse=warehouse checkpoint=tmp/ \
-  bootstrap="$BOOTSTRAP" descriptor="$DESCRIPTOR" dedup=false compaction=false
+  bootstrap="$BOOTSTRAP" "$@"

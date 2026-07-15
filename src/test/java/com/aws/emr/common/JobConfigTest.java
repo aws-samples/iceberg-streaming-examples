@@ -90,4 +90,118 @@ class JobConfigTest {
     // unsafe characters are replaced so the path stays valid
     assertEquals("tmp/a_b_c", cfg.checkpointFor("a/b c"));
   }
+
+  // ------------------------------------------------------------------ table / behaviour knobs
+
+  @Test
+  void tableKnobsHaveSensibleDefaults() {
+    JobConfig cfg = JobConfig.fromArgs(new String[] {});
+    assertEquals(JobConfig.Mode.COW, cfg.mode(JobConfig.Mode.COW));
+    assertEquals(JobConfig.Mode.MOR, cfg.mode(JobConfig.Mode.MOR)); // per-job default respected
+    assertEquals(JobConfig.FileFormat.PARQUET, cfg.fileFormat(JobConfig.FileFormat.PARQUET));
+    assertFalse(cfg.objectStorage(false));
+    assertEquals(JobConfig.Source.PROTO, cfg.source());
+    assertEquals("telemetry-proto", cfg.topic());
+    assertEquals(JobConfig.Dedup.NONE, cfg.dedup(JobConfig.Dedup.NONE));
+    assertEquals(JobConfig.Compaction.NONE, cfg.compactionMode(JobConfig.Compaction.NONE));
+    assertEquals("120 seconds", cfg.watermarkDelay());
+    assertEquals("eu-west-1", cfg.region());
+  }
+
+  @Test
+  void tableKnobsParse() {
+    JobConfig cfg =
+        JobConfig.fromArgs(
+            new String[] {
+              "mode=mor", "fileformat=orc", "objectstorage=true", "source=json",
+              "dedup=batch", "compaction=scheduled", "fv=2"
+            });
+    assertEquals(JobConfig.Mode.MOR, cfg.mode(JobConfig.Mode.COW));
+    assertEquals(JobConfig.FileFormat.ORC, cfg.fileFormat(JobConfig.FileFormat.PARQUET));
+    assertTrue(cfg.objectStorage(false));
+    assertEquals(JobConfig.Source.JSON, cfg.source());
+    assertEquals("telemetry-json", cfg.topic());
+    assertEquals(JobConfig.Dedup.BATCH, cfg.dedup(JobConfig.Dedup.NONE));
+    assertEquals(JobConfig.Compaction.SCHEDULED, cfg.compactionMode(JobConfig.Compaction.NONE));
+    assertEquals("2", cfg.formatVersion("3"));
+  }
+
+  @Test
+  void legacyBooleanDedupAndCompactionStillAccepted() {
+    JobConfig cfg = JobConfig.fromArgs(new String[] {"dedup=true", "compaction=true"});
+    assertEquals(JobConfig.Dedup.MERGE, cfg.dedup(JobConfig.Dedup.NONE));
+    assertEquals(JobConfig.Compaction.INLINE, cfg.compactionMode(JobConfig.Compaction.NONE));
+    JobConfig off = JobConfig.fromArgs(new String[] {"dedup=false", "compaction=false"});
+    assertEquals(JobConfig.Dedup.NONE, off.dedup(JobConfig.Dedup.MERGE));
+    assertEquals(JobConfig.Compaction.NONE, off.compactionMode(JobConfig.Compaction.INLINE));
+  }
+
+  @Test
+  void invalidKnobValuesThrow() {
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"mode=upsert"}).mode(JobConfig.Mode.COW));
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"fileformat=csv"}).fileFormat(JobConfig.FileFormat.PARQUET));
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"dedup=maybe"}).dedup(JobConfig.Dedup.NONE));
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"fv=4"}).formatVersion("3"));
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"source=xml"}).source());
+  }
+
+  @Test
+  void tablePropertiesFollowTheKnobs() {
+    JobConfig cfg = JobConfig.fromArgs(new String[] {"mode=mor", "fv=2", "fileformat=orc", "objectstorage=true"});
+    var props = cfg.tablePropertiesMap(JobConfig.Mode.COW, java.util.Map.of());
+    assertEquals("2", props.get("format-version"));
+    assertEquals("orc", props.get("write.format.default"));
+    assertEquals("merge-on-read", props.get("write.merge.mode"));
+    assertEquals("hash", props.get("write.merge.distribution-mode"));
+    assertEquals("true", props.get("write.object-storage.enabled"));
+    // Format-specific compression only for the format in use: no parquet tuning on an ORC table.
+    assertEquals("zstd", props.get("write.orc.compression-codec"));
+    assertFalse(props.containsKey("write.parquet.compression-codec"));
+  }
+
+  @Test
+  void tablePropertiesDefaultsAreCopyOnWriteParquet() {
+    JobConfig cfg = JobConfig.fromArgs(new String[] {});
+    var props = cfg.tablePropertiesMap(JobConfig.Mode.COW, java.util.Map.of());
+    assertEquals("3", props.get("format-version"));
+    assertEquals("parquet", props.get("write.format.default"));
+    assertEquals("copy-on-write", props.get("write.merge.mode"));
+    assertFalse(props.containsKey("write.object-storage.enabled"));
+    assertEquals("zstd", props.get("write.parquet.compression-codec"));
+    // overrides win
+    var overridden =
+        cfg.tablePropertiesMap(JobConfig.Mode.COW, java.util.Map.of("commit.retry.num-retries", "100"));
+    assertEquals("100", overridden.get("commit.retry.num-retries"));
+  }
+
+  @Test
+  void createTableDdlInterpolatesEverything() {
+    JobConfig cfg = JobConfig.fromArgs(new String[] {"mode=mor"});
+    String ddl = cfg.createTableDdl("t1", "id bigint, ts timestamp", "hours(ts)", JobConfig.Mode.COW,
+        java.util.Map.of());
+    assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS t1"));
+    assertTrue(ddl.contains("PARTITIONED BY (hours(ts))"));
+    assertTrue(ddl.contains("'write.merge.mode'='merge-on-read'"));
+  }
+
+  @Test
+  void triggerParsesSecondsAndAvailableNow() {
+    assertEquals(
+        org.apache.spark.sql.streaming.Trigger.ProcessingTime(60, java.util.concurrent.TimeUnit.SECONDS),
+        JobConfig.fromArgs(new String[] {}).trigger(60));
+    assertEquals(
+        org.apache.spark.sql.streaming.Trigger.ProcessingTime(5, java.util.concurrent.TimeUnit.SECONDS),
+        JobConfig.fromArgs(new String[] {"trigger=5"}).trigger(60));
+    assertEquals(
+        org.apache.spark.sql.streaming.Trigger.AvailableNow(),
+        JobConfig.fromArgs(new String[] {"trigger=availablenow"}).trigger(60));
+    assertThrows(IllegalArgumentException.class,
+        () -> JobConfig.fromArgs(new String[] {"trigger=often"}).trigger(60));
+  }
 }
+

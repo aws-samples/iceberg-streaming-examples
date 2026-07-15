@@ -151,10 +151,12 @@
             <artifactId>protobuf-java</artifactId>
             <version>${protobuf.version}</version>
         </dependency>
+        <!-- Keep util aligned with protobuf-java: mixing a 3.x core with a 4.x util is a
+             runtime accident waiting to happen. -->
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java-util</artifactId>
-            <version>4.27.1</version>
+            <version>${protobuf.version}</version>
         </dependency>
         <!-- Overwrite avro and jackson versions-->
         <dependency>
@@ -301,7 +303,10 @@
                         </goals>
                         <configuration>
                             <sourceDirectory>${project.basedir}/src/main/avro/</sourceDirectory>
-                            <outputDirectory>${project.basedir}/src/main/java/</outputDirectory>
+                            <!-- Generate into target/ (added as a source root by the plugin) instead
+                                 of committing generated code into src/main/java. -->
+                            <outputDirectory>${project.build.directory}/generated-sources/avro</outputDirectory>
+                            <stringType>String</stringType>
                         </configuration>
                     </execution>
                 </executions>

@@ -1,0 +1,20 @@
+
+ÿ
+google/protobuf/timestamp.protogoogle.protobuf";
+	Timestamp
+seconds (Rseconds
+nanos (RnanosB…
+com.google.protobufBTimestampProtoPZ2google.golang.org/protobuf/types/known/timestamppbø¢GPBªGoogle.Protobuf.WellKnownTypesbproto3
+å
+VehicleTelemetry.prototelemetry.evgoogle/protobuf/timestamp.proto"õ
+VehicleTelemetry
+
+vehicle_id (R	vehicleId9
+
+event_time (2.google.protobuf.TimestampR	eventTime
+model (	Rmodel
+	speed_kmh (RspeedKmh
+soc_pct (RsocPct
+odometer_km (R
+odometerKm
+charging (RchargingBBVehicleTelemetryOuterClassbproto3

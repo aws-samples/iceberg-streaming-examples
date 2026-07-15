@@ -49,41 +49,21 @@ public class SparkIncrementalPipeline {
 
     // The source changelog table (populated by SparkLogChange) ...
     spark.sql(
-        """
-                        CREATE TABLE IF NOT EXISTS accounts_changelog
-                              (
-                              operation string,
-                              account_id bigint,
-                              balance bigint,
-                              last_updated timestamp,
-                              seq bigint            -- source sequence (LSN surrogate) for deterministic ordering
-                              )
-                              PARTITIONED BY (days(last_updated),bucket(8, account_id))
-                              TBLPROPERTIES (
-                                        'table_type'='ICEBERG',
-                                        'format-version'='3',
-                                        'write.parquet.compression-codec'='zstd',
-                                        'compatibility.snapshot-id-inheritance.enabled'='true' );
-                        """);
-    // ... and the target mirror table where the deduplicated, merged state lives.
+        cfg.createTableDdl(
+            "accounts_changelog",
+            SparkLogChange.COLUMNS_DDL,
+            SparkLogChange.PARTITION_DDL,
+            JobConfig.Mode.COW,
+            Map.of()));
+    // ... and the target mirror table where the deduplicated, merged state lives (merge-on-read by
+    // default so the MERGE's deletes/updates become deletion vectors on v3).
     spark.sql(
-        """
-                        CREATE TABLE IF NOT EXISTS accounts_mirror
-                              (account_id bigint,
-                              balance float,
-                              last_updated timestamp,
-                              seq bigint            -- last applied source sequence, for stale-change guards
-                              )
-                              PARTITIONED BY (bucket(8, account_id))
-                              TBLPROPERTIES (
-                                        'table_type'='ICEBERG',
-                                        'format-version'='3',
-                                        'write.delete.mode'='merge-on-read',
-                                        'write.update.mode'='merge-on-read',
-                                        'write.merge.mode'='merge-on-read',
-                                        'write.parquet.compression-codec'='zstd',
-                                        'compatibility.snapshot-id-inheritance.enabled'='true' );
-                        """);
+        cfg.createTableDdl(
+            "accounts_mirror",
+            CdcSql.MIRROR_COLUMNS_DDL,
+            CdcSql.MIRROR_PARTITION_DDL,
+            JobConfig.Mode.MOR,
+            Map.of()));
 
     // Load the target table and recover the last processed source snapshot id from its history.
     Table mirrorTable = Spark3Util.loadIcebergTable(spark, "accounts_mirror");

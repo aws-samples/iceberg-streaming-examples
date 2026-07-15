@@ -1,0 +1,13 @@
+{"namespace": "telemetry.ev.avro",
+ "type": "record",
+ "name": "VehicleTelemetry",
+ "doc": "EV vehicle telemetry reading. event_time is epoch milliseconds (plain long so the producers stay trivial in every language; the Spark jobs cast it to a timestamp).",
+ "fields": [
+     {"name": "vehicle_id", "type": "long"},
+     {"name": "event_time", "type": "long"},
+     {"name": "model", "type": "string"},
+     {"name": "speed_kmh", "type": "int"},
+     {"name": "soc_pct", "type": "int"},
+     {"name": "odometer_km", "type": "long"},
+     {"name": "charging", "type": "boolean"}]
+}
