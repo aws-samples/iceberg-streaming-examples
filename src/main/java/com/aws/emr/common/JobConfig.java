@@ -92,6 +92,13 @@ public final class JobConfig {
   private final boolean compaction;
   private final int shufflePartitions;
 
+  /**
+   * All parsed {@code key=value} arguments, kept so example-specific options (such as {@code table},
+   * {@code fv}, {@code fanout}, {@code manifestmerge} or the streaming knobs below) can be read
+   * through the typed accessors instead of every job re-parsing {@code args} by hand.
+   */
+  private final Map<String, String> rawArgs;
+
   private JobConfig(
       Runtime runtime,
       Catalog catalog,
@@ -102,7 +109,8 @@ public final class JobConfig {
       String avroSchemaFile,
       boolean removeDuplicates,
       boolean compaction,
-      int shufflePartitions) {
+      int shufflePartitions,
+      Map<String, String> rawArgs) {
     this.runtime = runtime;
     this.catalog = catalog;
     this.warehouse = warehouse;
@@ -113,6 +121,7 @@ public final class JobConfig {
     this.removeDuplicates = removeDuplicates;
     this.compaction = compaction;
     this.shufflePartitions = shufflePartitions;
+    this.rawArgs = Map.copyOf(rawArgs);
   }
 
   /**
@@ -165,7 +174,8 @@ public final class JobConfig {
             kv.getOrDefault("avro", "./src/main/avro/Employee.avsc"),
             Boolean.parseBoolean(kv.getOrDefault("dedup", "false")),
             Boolean.parseBoolean(kv.getOrDefault("compaction", "false")),
-            Integer.parseInt(kv.getOrDefault("shuffle", Integer.toString(defaultShuffle))));
+            Integer.parseInt(kv.getOrDefault("shuffle", Integer.toString(defaultShuffle))),
+            kv);
     cfg.log();
     return cfg;
   }
@@ -289,19 +299,96 @@ public final class JobConfig {
    * @return the raw Kafka source {@code DataFrame} (key/value/topic/partition/offset/timestamp)
    */
   public Dataset<Row> kafkaStream(SparkSession spark, String topic) {
-    return spark
-        .readStream()
-        .format("kafka")
-        .option("kafka.bootstrap.servers", bootstrapServers)
-        .option("subscribe", topic)
-        .option("startingOffsets", "latest")
-        .option("minPartitions", Integer.toString(shufflePartitions))
-        .option("kafka.fetch.min.bytes", "1048576") // 1 MiB
-        .option("kafka.fetch.max.bytes", "104857600") // 100 MiB per fetch
-        .option("kafka.max.partition.fetch.bytes", "10485760") // 10 MiB per partition
-        .option("kafka.max.poll.records", "50000")
-        .option("kafka.receive.buffer.bytes", "16777216") // 16 MiB socket buffer
-        .load();
+    org.apache.spark.sql.streaming.DataStreamReader reader =
+        spark
+            .readStream()
+            .format("kafka")
+            .option("kafka.bootstrap.servers", bootstrapServers)
+            .option("subscribe", topic)
+            // Offsets to start from on a *fresh* checkpoint (default: latest). A showcase often wants
+            // earliest for a deterministic replay of a pre-loaded topic; expose it as a knob.
+            .option("startingOffsets", startingOffsets())
+            .option("minPartitions", Integer.toString(shufflePartitions))
+            .option("kafka.fetch.min.bytes", "1048576") // 1 MiB
+            .option("kafka.fetch.max.bytes", "104857600") // 100 MiB per fetch
+            .option("kafka.max.partition.fetch.bytes", "10485760") // 10 MiB per partition
+            .option("kafka.max.poll.records", "50000")
+            .option("kafka.receive.buffer.bytes", "16777216"); // 16 MiB socket buffer
+    // Optional rate limit: cap the records pulled per micro-batch. Unset by default (drain all
+    // available data for maximum throughput); set maxOffsetsPerTrigger= to bound batch size/latency.
+    String maxOffsets = arg("maxoffsetspertrigger", null);
+    if (maxOffsets != null) {
+      reader = reader.option("maxOffsetsPerTrigger", maxOffsets);
+    }
+    // failOnDataLoss defaults to Kafka's own default (true). On a demo topic with short retention,
+    // set failOnDataLoss=false so an aged-out offset does not kill the query.
+    String failOnDataLoss = arg("failondataloss", null);
+    if (failOnDataLoss != null) {
+      reader = reader.option("failOnDataLoss", failOnDataLoss);
+    }
+    return reader.load();
+  }
+
+  // --------------------------------------------------------------- typed argument accessors
+
+  /**
+   * Return the raw value of a {@code key=value} argument (case-insensitive key), or {@code def} if
+   * it was not supplied. This is how example-specific options are read without every job re-parsing
+   * {@code args}.
+   */
+  public String arg(String key, String def) {
+    String value = rawArgs.get(key.toLowerCase());
+    return (value == null || value.isBlank()) ? def : value;
+  }
+
+  /** @return a boolean {@code key=value} argument, or {@code def} if not supplied. */
+  public boolean argBool(String key, boolean def) {
+    String value = arg(key, null);
+    return value == null ? def : Boolean.parseBoolean(value);
+  }
+
+  /** Target table name for the parameterised examples ({@code table=}, default {@code def}). */
+  public String table(String def) {
+    return arg("table", def);
+  }
+
+  /** Iceberg format version for the parameterised examples ({@code fv=2|3}, default {@code def}). */
+  public String formatVersion(String def) {
+    return arg("fv", def);
+  }
+
+  /** Spark fanout-writer toggle ({@code fanout=true|false}, default {@code def}). */
+  public boolean fanout(boolean def) {
+    return argBool("fanout", def);
+  }
+
+  /** Iceberg automatic manifest merge-on-commit toggle ({@code manifestmerge=true|false}). */
+  public boolean manifestMerge(boolean def) {
+    return argBool("manifestmerge", def);
+  }
+
+  /** Kafka {@code startingOffsets} for a fresh checkpoint ({@code startingoffsets=}, default latest). */
+  public String startingOffsets() {
+    return arg("startingoffsets", "latest");
+  }
+
+  // --------------------------------------------------------------- checkpoints
+
+  /**
+   * Derive a per-query checkpoint path under {@link #checkpointLocation}, so multiple streaming
+   * examples launched with the same (or default) {@code checkpoint=} do not collide on incompatible
+   * state. Every streaming query must have its own checkpoint; a checkpoint encodes the query's
+   * schema and offsets and cannot be shared between different queries.
+   *
+   * @param queryName a stable, unique name for the streaming query
+   * @return {@code <checkpointLocation>/<queryName>}
+   */
+  public String checkpointFor(String queryName) {
+    String base = checkpointLocation.endsWith("/")
+        ? checkpointLocation.substring(0, checkpointLocation.length() - 1)
+        : checkpointLocation;
+    String safe = queryName.replaceAll("[^a-zA-Z0-9_.-]", "_");
+    return base + "/" + safe;
   }
 
   private void log() {
@@ -343,6 +430,13 @@ public final class JobConfig {
         + "  dedup=true|false            enable deduplication (default: false)\n"
         + "  compaction=true|false       enable periodic compaction (default: false)\n"
         + "  shuffle=<n>                 spark.sql.shuffle.partitions initial value, AQE coalesces (default: 200 local / 800 cloud)\n"
+        + "  startingOffsets=latest|earliest|{json}  Kafka start offsets on a fresh checkpoint (default: latest)\n"
+        + "  maxOffsetsPerTrigger=<n>    cap records per micro-batch (default: unset -> drain all)\n"
+        + "  failOnDataLoss=true|false   Kafka failOnDataLoss (default: Kafka default true)\n"
+        + "  table=<name>                target table for parameterised examples (job-specific default)\n"
+        + "  fv=2|3                      Iceberg format-version for parameterised examples (job-specific default)\n"
+        + "  fanout=true|false           Spark fanout writers (job-specific default)\n"
+        + "  manifestmerge=true|false    Iceberg manifest merge-on-commit (job-specific default)\n"
         + "Examples:\n"
         + "  (no args)                                             # local dev, hadoop catalog\n"
         + "  catalog=glue warehouse=s3://bucket/warehouse ...      # local Spark, data in S3 via Glue\n"

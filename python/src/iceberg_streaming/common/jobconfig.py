@@ -83,6 +83,9 @@ class JobConfig:
     compaction: bool
     shuffle_partitions: int
     region: str
+    # All parsed key=value arguments, so example-specific options (table, fv, fanout, manifestmerge,
+    # the streaming knobs, ...) are read through the typed accessors instead of re-parsing argv.
+    raw_args: dict[str, str]
 
     # ------------------------------------------------------------------ parsing
 
@@ -122,9 +125,54 @@ class JobConfig:
             compaction=_parse_bool(kv.get("compaction", "false")),
             shuffle_partitions=int(kv.get("shuffle", str(default_shuffle))),
             region=kv.get("region", "eu-west-1"),
+            raw_args=dict(kv),
         )
         cfg._log()
         return cfg
+
+    # ------------------------------------------------------------------ typed accessors
+
+    def arg(self, key: str, default: str | None = None) -> str | None:
+        """Raw value of a ``key=value`` argument (case-insensitive), or ``default`` if not supplied."""
+        value = self.raw_args.get(key.lower())
+        return default if value is None or value == "" else value
+
+    def arg_bool(self, key: str, default: bool) -> bool:
+        value = self.arg(key)
+        return default if value is None else _parse_bool(value)
+
+    def table(self, default: str | None = None) -> str | None:
+        """Target table for parameterised examples (``table=``)."""
+        return self.arg("table", default)
+
+    def format_version(self, default: str = FORMAT_VERSION) -> str:
+        """Iceberg format version for parameterised examples (``fv=2|3``)."""
+        return self.arg("fv", default)
+
+    def fanout(self, default: bool) -> bool:
+        """Spark fanout-writer toggle (``fanout=true|false``)."""
+        return self.arg_bool("fanout", default)
+
+    def manifest_merge(self, default: bool) -> bool:
+        """Iceberg manifest merge-on-commit toggle (``manifestmerge=true|false``)."""
+        return self.arg_bool("manifestmerge", default)
+
+    def starting_offsets(self) -> str:
+        """Kafka ``startingOffsets`` for a fresh checkpoint (``startingoffsets=``, default latest)."""
+        return self.arg("startingoffsets", "latest")
+
+    def checkpoint_for(self, query_name: str) -> str:
+        """Derive a per-query checkpoint path under :attr:`checkpoint_location`.
+
+        Every streaming query needs its own checkpoint (it encodes the query's schema and offsets and
+        cannot be shared between different queries), so streaming examples should call this instead of
+        using :attr:`checkpoint_location` directly.
+        """
+        import re
+
+        base = self.checkpoint_location.rstrip("/")
+        safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", query_name)
+        return f"{base}/{safe}"
 
     # ------------------------------------------------------------------ helpers
 
@@ -195,19 +243,30 @@ class JobConfig:
         ``maxOffsetsPerTrigger`` is set, so each micro-batch drains all available data (max
         throughput); add it per job for rate limiting.
         """
-        return (
+        reader = (
             spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", self.bootstrap_servers)
             .option("subscribe", topic)
-            .option("startingOffsets", "latest")
+            # start offsets on a fresh checkpoint (default latest); set startingOffsets=earliest for
+            # a deterministic replay of a pre-loaded topic.
+            .option("startingOffsets", self.starting_offsets())
             .option("minPartitions", str(self.shuffle_partitions))
             .option("kafka.fetch.min.bytes", "1048576")  # 1 MiB
             .option("kafka.fetch.max.bytes", "104857600")  # 100 MiB per fetch
             .option("kafka.max.partition.fetch.bytes", "10485760")  # 10 MiB per partition
             .option("kafka.max.poll.records", "50000")
             .option("kafka.receive.buffer.bytes", "16777216")  # 16 MiB socket buffer
-            .load()
         )
+        # Optional rate limit (unset by default -> drain all available data each micro-batch).
+        max_offsets = self.arg("maxoffsetspertrigger")
+        if max_offsets is not None:
+            reader = reader.option("maxOffsetsPerTrigger", max_offsets)
+        # failOnDataLoss defaults to Kafka's own default (true); set failOnDataLoss=false on a demo
+        # topic with short retention so an aged-out offset does not kill the query.
+        fail_on_data_loss = self.arg("failondataloss")
+        if fail_on_data_loss is not None:
+            reader = reader.option("failOnDataLoss", fail_on_data_loss)
+        return reader.load()
 
     def _packages(self) -> list[str]:
         packages = [
@@ -272,5 +331,12 @@ def usage() -> str:
         "  dedup=true|false            enable deduplication (default: false)\n"
         "  compaction=true|false       enable periodic compaction (default: false)\n"
         "  shuffle=<n>                 spark.sql.shuffle.partitions initial value, AQE coalesces (default: 200 local / 800 cloud)\n"
-        "  region=<aws-region>         Glue Schema Registry region (default: eu-west-1)"
+        "  region=<aws-region>         Glue Schema Registry region (default: eu-west-1)\n"
+        "  startingOffsets=latest|earliest|{json}  Kafka start offsets on a fresh checkpoint (default: latest)\n"
+        "  maxOffsetsPerTrigger=<n>    cap records per micro-batch (default: unset -> drain all)\n"
+        "  failOnDataLoss=true|false   Kafka failOnDataLoss (default: Kafka default true)\n"
+        "  table=<name>                target table for parameterised examples (job-specific default)\n"
+        "  fv=2|3                      Iceberg format-version for parameterised examples (job-specific default)\n"
+        "  fanout=true|false           Spark fanout writers (job-specific default)\n"
+        "  manifestmerge=true|false    Iceberg manifest merge-on-commit (job-specific default)"
     )
