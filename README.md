@@ -181,26 +181,6 @@ uv run telemetry-producer format=proto count=1000000     # terminal A
 uv run iot-custom-ingest startingOffsets=earliest dedup=merge   # terminal B
 ```
 
-### A note on Iceberg v3 tables
-
-Tables are created as **Apache Iceberg format-version 3 (v3)** by default (`fv=3`). Iceberg v3
-became production ready with Apache Iceberg 1.11.0 and brings, among other things, deletion vectors
-(used automatically by the merge-on-read examples instead of v2 positional delete files), row
-lineage, the VARIANT type, default column values, nanosecond timestamps and multi-argument partition
-transforms. Pass `fv=2` to any job to A/B the two delete encodings under an identical workload.
-
-**Runtime / version compatibility.** v3 (and deletion vectors) needs Iceberg **1.11.0+**. This repo
-pins that locally, but a managed runtime may ship an older Iceberg, so confirm before assuming v3
-behaviour:
-
-| Where | Spark | Iceberg | Notes |
-|---|---|---|---|
-| Local (this repo) | 4.0.2 | 1.11.0 (pinned in `pom.xml` / `pyproject.toml`) | full v3 + deletion vectors |
-| EMR `emr-spark-8.0.0` | 4.0.2 | provided by the runtime - verify the label ships >= 1.11 | if it ships 1.10.x, v3 tables may not behave as documented |
-
-Because the EMR profile marks Iceberg `provided`, the cloud runtime - not this build - decides the
-effective Iceberg version. Check it on your target release before running the v3 examples there.
-
 ## Producing streaming data (three formats, two domains)
 
 The producing side is part of the story: the same telemetry record is produced in three payload
@@ -292,19 +272,19 @@ debugging ("which offset produced this row?"), and the deterministic tiebreaker 
 
 ### Deduplication strategies
 
-Exactly-once systems are difficult; with Spark you need an idempotent sink. The producer deliberately
+Exactly-once systems are difficult; with Spark you need an idempotent sink. The IoT producer deliberately
 re-sends 0.2% of records, so the strategies can be compared directly. The **event identity** is
 `(vehicle_id, event_time)`: a device re-sending a reading repeats both.
 
 * `dedup=none` - append everything, duplicates included (the baseline).
 * `dedup=batch` - `dropDuplicates` on the event identity inside each micro-batch: one cheap shuffle,
-  no target scan. Catches the common case (a re-send lands in the same batch); duplicates that split
+  no target scan. Catches the common case (a resend lands in the same batch); duplicates that split
   across batches survive.
 * `dedup=merge` - batch dedup *plus* a `MERGE INTO` whose ON clause is scoped to the recent target
   partitions, so re-deliveries arriving in a *later* batch are suppressed too. This is **bounded
   replay suppression**, not a global upsert (for keyed upserts see the CDC mirror). The in-batch
   dedup partitions by `(vehicle_id, event_time)` - partitioning by `vehicle_id` alone would collapse
-  distinct readings of the same vehicle and silently lose data - and ties break deterministically on
+  distinct readings of the same vehicle and silently lose data and ties break deterministically on
   the highest Kafka offset. The shared statement lives in `TelemetrySql` (Java) /
   `iceberg_streaming.iot._sql` (Python) and is unit-tested in CI.
 * `dedup=watermark` (native writer only) - stateful `dropDuplicatesWithinWatermark` on the event
