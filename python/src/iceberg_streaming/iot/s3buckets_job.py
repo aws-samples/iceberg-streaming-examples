@@ -44,9 +44,9 @@ _CREATE_TABLE = """
                     'write.parquet.page-size-bytes' = '1048576',
                     'write.target-file-size-bytes' = '536870912',
                     'write.distribution-mode' = 'hash',
-                    'write.delete.distribution-mode' = 'none',
-                    'write.update.distribution-mode' = 'none',
-                    'write.merge.distribution-mode' = 'none',
+                    'write.delete.distribution-mode' = 'hash',
+                    'write.update.distribution-mode' = 'hash',
+                    'write.merge.distribution-mode' = 'hash',
                     'write.object-storage.enabled' = 'true',
                     'write.spark.fanout.enabled' = 'true',
                     'write.metadata.delete-after-commit.enabled' = 'false',
@@ -111,12 +111,26 @@ def run(argv: list[str] | None, app_name: str, table: str, file_format: str) -> 
     def process_batch(batch_df, batch_id: int) -> None:
         session = batch_df.sparkSession
         log.warning("Writing batch %s", batch_id)
+        # Skip empty micro-batches: no data to merge/insert on an idle trigger.
+        if batch_df.isEmpty():
+            log.warning("Batch %s is empty, skipping", batch_id)
+            return
         if remove_duplicates:
             batch_df.createOrReplaceTempView("insert_data")
+            # Deduplicate the micro-batch first: keep only the latest row per employee_id
+            # (by start_date) so a key resent within the same batch is not inserted twice.
             session.sql(
                 f"""
                 MERGE INTO {qualified} AS t
-                USING insert_data AS s
+                USING (
+                    SELECT employee_id, age, start_date, team, role, address, name
+                    FROM (
+                        SELECT *, row_number() OVER (
+                                   PARTITION BY employee_id ORDER BY start_date DESC) AS row_num
+                        FROM insert_data
+                    )
+                    WHERE row_num = 1
+                ) AS s
                 ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
                 AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
                 WHEN NOT MATCHED THEN INSERT *

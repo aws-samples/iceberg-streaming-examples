@@ -4,6 +4,7 @@ import static org.apache.spark.sql.functions.*;
 import static org.apache.spark.sql.protobuf.functions.*;
 
 import com.aws.emr.common.JobConfig;
+import com.aws.emr.common.StreamingProgressListener;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -101,6 +102,12 @@ public class SparkCustomIcebergIngest {
                     (dataframe, batchId) -> {
                       var session = dataframe.sparkSession();
                       log.warn("Writing batch {}", batchId);
+                      // Skip empty micro-batches: no data to merge/insert and no reason to run the
+                      // MERGE or the periodic compaction on an idle trigger.
+                      if (dataframe.isEmpty()) {
+                        log.warn("Batch {} is empty, skipping", batchId);
+                        return;
+                      }
                       if (removeDuplicates) {
                         dataframe.createOrReplaceTempView("insert_data");
                         // here we are pushing some filters like the team and the date (we know that
@@ -115,10 +122,29 @@ public class SparkCustomIcebergIngest {
                         // the problem is that you wouldn't able to use INSERT *
                         // another thing to test storage-partitioned joins but from streaming sources the performance gains...
                         // should be tested on cluster, on local laptop mode they hurt, already tested
+                        //
+                        // NOTE ON SEMANTICS: this is *bounded replay suppression*, NOT a global key
+                        // upsert. The ON clause is scoped to the last hour, team='Solutions Architects'
+                        // and an exact start_date match, and the only action is INSERT when NOT MATCHED.
+                        // So it suppresses duplicate re-arrivals of the same (employee_id,start_date)
+                        // event within that recent window; it does NOT update existing rows and it will
+                        // still insert an older replay outside the window or for another team. For a
+                        // global upsert keyed on the business key, see the CDC mirror (SparkCDCMirror /
+                        // SparkStreamingCDCMirror) and the README "CDC correctness assumptions".
+                        // The inner row_number() first collapses duplicates of the same key within this
+                        // one micro-batch so INSERT * cannot write them twice.
                         String merge =
                             """
                                   MERGE INTO bigdata.employee as t
-                                  USING  insert_data as s
+                                  USING (
+                                        SELECT employee_id, age, start_date, team, role, address, name
+                                        FROM (
+                                            SELECT *, row_number() OVER (
+                                                       PARTITION BY employee_id ORDER BY start_date DESC) AS row_num
+                                            FROM insert_data
+                                        )
+                                        WHERE row_num = 1
+                                  ) as s
                                   ON `s`.`employee_id`=`t`.`employee_id` AND `t`.`start_date` > current_timestamp() - INTERVAL 1 HOURS
                                   AND `t`.`team`='Solutions Architects' AND `t`.`start_date`=`s`.`start_date`
                                   WHEN NOT MATCHED THEN INSERT *
@@ -136,7 +162,7 @@ public class SparkCustomIcebergIngest {
                         // progress we need to increase the commit retries though), or you can just
                         // use this
                         // strategy for compaction, older partitions on each N batches.
-                        if (batchId % 10 == 0) {
+                        if (batchId > 0 && batchId % 10 == 0) {
                           log.warn("\nCompaction in progress:\n");
                           spark
                               .sql(
@@ -158,8 +184,8 @@ public class SparkCustomIcebergIngest {
                               .show();
                         }
                         // rewrite manifests from time to time
-                        log.warn("\nManifest compaction in progress:\n");
-                        if (batchId % 30 == 0) {
+                        if (batchId > 0 && batchId % 30 == 0) {
+                          log.warn("\nManifest compaction in progress:\n");
                           spark
                               .sql(
                                   """
@@ -175,8 +201,9 @@ public class SparkCustomIcebergIngest {
                     })
             .trigger(Trigger.ProcessingTime(5, TimeUnit.MINUTES))
             .option("fanout-enabled", "true") // disable ordering
-            .option("checkpointLocation", cfg.checkpointLocation())
+            .option("checkpointLocation", cfg.checkpointFor("streaming-protobuf-ingest"))
             .start();
+    StreamingProgressListener.attach(spark);
     query.awaitTermination();
   }
 }
