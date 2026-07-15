@@ -1,1 +1,1 @@
-"""IoT streaming ingest examples (Protocol Buffers -> Iceberg v3)."""
+"""EV vehicle telemetry streaming ingest examples (proto/avro/json -> Iceberg)."""

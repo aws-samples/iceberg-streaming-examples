@@ -41,6 +41,21 @@ public final class CdcSql {
   private CdcSql() {}
 
   /**
+   * Column list of the mirror tables, shared by the batch, incremental and streaming variants.
+   * {@code balance} is in minor units (cents) and stays {@code bigint} end to end, matching the
+   * changelog - money never touches a float.
+   */
+  public static final String MIRROR_COLUMNS_DDL =
+      """
+      account_id bigint,
+                balance bigint,
+                last_updated timestamp,
+                seq bigint""";
+
+  /** Partition spec of the mirror tables: bucketed on the merge key so the ON clause prunes. */
+  public static final String MIRROR_PARTITION_DDL = "bucket(8, account_id)";
+
+  /**
    * Build the deduplicate-then-MERGE statement for the mirror pattern.
    *
    * @param targetTable the target mirror table (a name or fully-qualified {@code cat.db.table})

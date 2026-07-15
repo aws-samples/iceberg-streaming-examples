@@ -21,6 +21,31 @@ that needs tombstones removed by a later maintenance pass -- see the README.
 
 from __future__ import annotations
 
+#: Column list of the mirror tables, shared by the batch, incremental and streaming variants.
+#: ``balance`` is in minor units (cents) and stays ``bigint`` end to end, matching the changelog -
+#: money never touches a float.
+MIRROR_COLUMNS_DDL = (
+    "account_id bigint,\n"
+    "          balance bigint,\n"
+    "          last_updated timestamp,\n"
+    "          seq bigint"
+)
+
+#: Partition spec of the mirror tables: bucketed on the merge key so the ON clause prunes.
+MIRROR_PARTITION_DDL = "bucket(8, account_id)"
+
+#: Column list of the changelog table written by ``cdc-log-change``.
+CHANGELOG_COLUMNS_DDL = (
+    "operation string,\n"
+    "          account_id bigint,\n"
+    "          balance bigint,\n"
+    "          last_updated timestamp,\n"
+    "          seq bigint"
+)
+
+#: Partition spec of the changelog table.
+CHANGELOG_PARTITION_DDL = "days(last_updated), bucket(8, account_id)"
+
 
 def mirror_merge(target_table: str, source_relation: str) -> str:
     """Build the deduplicate-then-MERGE statement for the mirror pattern.

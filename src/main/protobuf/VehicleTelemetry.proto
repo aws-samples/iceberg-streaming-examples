@@ -1,0 +1,29 @@
+// EV vehicle telemetry message used by every IoT example in this repository.
+//
+// Deliberately simple and flat: seven fixed-size-ish fields so the producers can
+// serialize millions of messages per second and the examples stay easy to reason
+// about. `event_time` is the event-time column every Iceberg table is partitioned
+// on, and (vehicle_id, event_time) is the event identity used for deduplication.
+syntax = "proto3";
+package telemetry.ev;
+
+option java_outer_classname = "VehicleTelemetryOuterClass";
+
+import "google/protobuf/timestamp.proto";
+
+message VehicleTelemetry {
+      // stable vehicle identifier (VIN surrogate); dedup/bucketing key
+      int64 vehicle_id = 1;
+      // when the reading was taken on the vehicle (event time, not ingest time)
+      google.protobuf.Timestamp event_time = 2;
+      // vehicle model, a low-cardinality dimension (e.g. "Falcon-3")
+      string model = 3;
+      // current speed in km/h
+      int32 speed_kmh = 4;
+      // battery state of charge, 0-100 (%)
+      int32 soc_pct = 5;
+      // odometer reading in km
+      int64 odometer_km = 6;
+      // whether the vehicle is currently charging
+      bool charging = 7;
+}

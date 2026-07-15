@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Generate the Python Protocol Buffers bindings used by the Kafka protobuf producer/consumer and the
-# proto UDF Spark job, from the shared Employee.proto in the parent (Java) project.
+# Generate the Python Protocol Buffers bindings used by the telemetry producer/consumer and the
+# proto UDF Spark job, from the shared VehicleTelemetry.proto in the parent (Java) project.
 #
 # Requires the dev dependency group (installed by `uv sync`). Run from anywhere:
 #
@@ -15,16 +15,16 @@ PYTHON_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROTO_DIR="$(cd "$PYTHON_DIR/../src/main/protobuf" && pwd)"
 OUT_DIR="$PYTHON_DIR/src/iceberg_streaming/proto_gen"
 
-echo "Proto source : $PROTO_DIR/Employee.proto"
+echo "Proto source : $PROTO_DIR/VehicleTelemetry.proto"
 echo "Output dir   : $OUT_DIR"
 
 mkdir -p "$OUT_DIR"
 
-# grpc_tools.protoc bundles the google/protobuf well-known types (wrappers, timestamp) on its
-# default include path, so we only need to add our own proto directory.
+# grpc_tools.protoc bundles the google/protobuf well-known types (timestamp) on its default include
+# path, so we only need to add our own proto directory.
 uv run --project "$PYTHON_DIR" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$OUT_DIR" \
-  "$PROTO_DIR/Employee.proto"
+  "$PROTO_DIR/VehicleTelemetry.proto"
 
-echo "Generated $OUT_DIR/Employee_pb2.py"
+echo "Generated $OUT_DIR/VehicleTelemetry_pb2.py"

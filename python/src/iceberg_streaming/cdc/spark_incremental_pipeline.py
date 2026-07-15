@@ -17,31 +17,13 @@ from __future__ import annotations
 import logging
 import sys
 
+from iceberg_streaming.cdc import _sql
 from iceberg_streaming.cdc._sql import mirror_merge
-from iceberg_streaming.common import DATABASE, JobConfig
+from iceberg_streaming.common import DATABASE, JobConfig, Mode
 
 log = logging.getLogger("iceberg_streaming.cdc.spark_incremental_pipeline")
 
 WATERMARK_KEY = "watermark:accounts_changelog"
-
-_CREATE_SOURCE = """
-    CREATE TABLE IF NOT EXISTS accounts_changelog
-          (operation string, account_id bigint, balance bigint, last_updated timestamp, seq bigint)
-          PARTITIONED BY (days(last_updated), bucket(8, account_id))
-          TBLPROPERTIES ('table_type'='ICEBERG','format-version'='3',
-                         'write.parquet.compression-codec'='zstd',
-                         'compatibility.snapshot-id-inheritance.enabled'='true')
-"""
-
-_CREATE_TARGET = """
-    CREATE TABLE IF NOT EXISTS accounts_mirror
-          (account_id bigint, balance float, last_updated timestamp, seq bigint)
-          PARTITIONED BY (bucket(8, account_id))
-          TBLPROPERTIES ('table_type'='ICEBERG','format-version'='3',
-                         'write.delete.mode'='merge-on-read','write.update.mode'='merge-on-read',
-                         'write.merge.mode'='merge-on-read','write.parquet.compression-codec'='zstd',
-                         'compatibility.snapshot-id-inheritance.enabled'='true')
-"""
 
 _MERGE = mirror_merge("accounts_mirror", "accounts_source")
 
@@ -73,8 +55,17 @@ def main(argv: list[str] | None = None) -> None:
 
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
     spark.sql(f"USE {DATABASE}")
-    spark.sql(_CREATE_SOURCE)
-    spark.sql(_CREATE_TARGET)
+    spark.sql(
+        cfg.create_table_ddl(
+            "accounts_changelog", _sql.CHANGELOG_COLUMNS_DDL, _sql.CHANGELOG_PARTITION_DDL, Mode.COW
+        )
+    )
+    # Merge-on-read mirror by default so the MERGE's deletes become deletion vectors on v3.
+    spark.sql(
+        cfg.create_table_ddl(
+            "accounts_mirror", _sql.MIRROR_COLUMNS_DDL, _sql.MIRROR_PARTITION_DDL, Mode.MOR
+        )
+    )
 
     to_process = _current_source_snapshot(spark)
     if to_process is None:

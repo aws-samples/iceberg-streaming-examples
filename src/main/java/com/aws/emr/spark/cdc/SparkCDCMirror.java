@@ -2,6 +2,7 @@ package com.aws.emr.spark.cdc;
 
 import com.aws.emr.common.JobConfig;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.streaming.StreamingQueryException;
@@ -28,30 +29,15 @@ public class SparkCDCMirror {
 
     spark.sql("CREATE DATABASE IF NOT EXISTS " + JobConfig.DATABASE);
     spark.sql("USE " + JobConfig.DATABASE);
+    // Merge-on-read mirror by default (the MERGE's deletes/updates become deletion vectors on v3);
+    // override with mode=/fv=/fileformat= like every other example.
     spark.sql(
-        """
-                        CREATE TABLE IF NOT EXISTS accounts_mirror
-                              (account_id bigint,
-                              balance float,
-                              last_updated timestamp,
-                              seq bigint            -- last applied source sequence, for stale-change guards
-                              )
-                              PARTITIONED BY (bucket(8, account_id))
-                              TBLPROPERTIES (
-                                        'table_type'='ICEBERG',
-                                        'format-version'='3',
-                                        'write.parquet.compression-level'='7',
-                                        'format'='parquet',
-                                        'write.delete.mode'='merge-on-read',
-                                        'write.update.mode'='merge-on-read',
-                                        'write.merge.mode'='merge-on-read',
-                                        'commit.retry.num-retries'='10',	--Number of times to retry a commit before failing
-                                        'commit.retry.min-wait-ms'='250',	--Minimum time in milliseconds to wait before retrying a commit
-                                        'commit.retry.max-wait-ms'='60000', -- (1 min)	Maximum time in milliseconds to wait before retrying a commit
-                                        'write.parquet.compression-codec'='zstd',
-                                        -- if you have a huge number of columns remember to tune dict-size and page-size
-                                        'compatibility.snapshot-id-inheritance.enabled'='true' );
-                        """);
+        cfg.createTableDdl(
+            "accounts_mirror",
+            CdcSql.MIRROR_COLUMNS_DDL,
+            CdcSql.MIRROR_PARTITION_DDL,
+            JobConfig.Mode.MOR,
+            Map.of()));
 
     // We only scan changes from the last day so we don't deduplicate over the whole (huge) changelog.
     // Dedup keeps the highest source sequence per key (deterministic) and the MERGE guards updates and

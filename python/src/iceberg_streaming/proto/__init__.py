@@ -1,1 +1,0 @@
-"""Protocol Buffers streaming examples."""
