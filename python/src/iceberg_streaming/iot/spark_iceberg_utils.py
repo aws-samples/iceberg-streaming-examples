@@ -1,8 +1,18 @@
-"""Iceberg table maintenance: compaction, snapshot expiration and partition-level dedup.
+"""Ad-hoc Iceberg table utilities for the telemetry table.
 
-PySpark counterpart of ``com.aws.emr.spark.iot.SparkIcebergUtils``. Batch job (no Kafka) that works
-against any catalog selected via :class:`iceberg_streaming.common.JobConfig`. Creates the
-``employee`` table as Iceberg v3 if it does not exist.
+PySpark counterpart of ``com.aws.emr.spark.iot.SparkIcebergUtils``: snapshot expiration, compaction
+of a bounded window of **closed** partitions, and a partition-level duplicate rewrite. Works against
+any catalog selected via :class:`iceberg_streaming.common.JobConfig`.
+
+The duplicate rewrite is the "later cleanup" companion to the streaming dedup: if replays older than
+the MERGE window did land (bounded replay suppression lets them through), this rewrites the affected
+partitions keeping one row per ``(vehicle_id, event_time)`` identity, using dynamic partition
+overwrite so only the touched partitions are replaced.
+
+Arguments (plus the usual JobConfig ones)::
+
+    table=<name>      telemetry table (default vehicle_telemetry)
+    day=<YYYY-MM-DD>  day to deduplicate in the duplicate rewrite (default: yesterday)
 """
 
 from __future__ import annotations
@@ -10,79 +20,49 @@ from __future__ import annotations
 import logging
 import sys
 
-from iceberg_streaming.common import DATABASE, JobConfig
+from iceberg_streaming.common import DATABASE, JobConfig, Mode
+from iceberg_streaming.iot import _sql, _telemetry
 
 log = logging.getLogger("iceberg_streaming.iot.spark_iceberg_utils")
-
-_SNAPSHOT_EXPIRATION = True
-_COMPACTION_ENABLED = True
-_REMOVE_DUPLICATES = True
-
-_CREATE_TABLE = """
-    CREATE TABLE IF NOT EXISTS employee
-          (employee_id bigint,
-          age int,
-          start_date timestamp,
-          team string,
-          role string,
-          address string,
-          name string
-          )
-          PARTITIONED BY (bucket(8, employee_id), hours(start_date), team)
-          TBLPROPERTIES (
-                    'table_type'='ICEBERG',
-                    'format-version'='3',
-                    'write.parquet.compression-level'='7',
-                    'format'='parquet',
-                    'commit.retry.num-retries'='10',
-                    'commit.retry.min-wait-ms'='250',
-                    'commit.retry.max-wait-ms'='60000',
-                    'write.parquet.compression-codec'='zstd',
-                    'compatibility.snapshot-id-inheritance.enabled'='true' )
-"""
 
 
 def main(argv: list[str] | None = None) -> None:
     cfg = JobConfig.from_args(argv if argv is not None else sys.argv[1:])
     spark = cfg.build_session("PySparkIcebergUtils")
 
+    table = cfg.table(_telemetry.TABLE)
+    day = cfg.arg("day", "current_date() - INTERVAL 1 DAY")
+    # A literal day must be quoted in SQL; the default expression must not.
+    day_expr = day if day.startswith("current_date") else f"'{day}'"
+
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
     spark.sql(f"USE {DATABASE}")
-    spark.sql(_CREATE_TABLE)
+    spark.sql(cfg.create_table_ddl(table, _telemetry.COLUMNS_DDL, _telemetry.PARTITION_DDL, Mode.COW))
 
-    if _SNAPSHOT_EXPIRATION:
-        spark.sql("CALL system.expire_snapshots(table => 'employee')").show()
+    # 1) Expire old snapshots (defaults apply; see iceberg-maintenance for the tunable version).
+    log.warning("Expiring old snapshots of %s", table)
+    spark.sql(f"CALL system.expire_snapshots(table => '{table}')").show()
 
-    if _COMPACTION_ENABLED:
-        spark.sql(
-            """
-            CALL system.rewrite_data_files(
-              table => 'employee',
-              strategy => 'sort',
-              sort_order => 'start_date',
-              where => 'start_date >= (current_timestamp() - INTERVAL 2 HOURS) AND start_date <= (current_timestamp() - INTERVAL 1 HOURS)',
-              options => map(
-                'rewrite-job-order','bytes-asc',
-                'target-file-size-bytes','273741824',
-                'max-file-group-size-bytes','10737418240',
-                'partial-progress.enabled', 'true',
-                'max-concurrent-file-group-rewrites', '10000',
-                'partial-progress.max-commits', '10'))
-            """
-        ).show()
+    # 2) Compact a bounded window of closed hourly partitions (never the hot current hour).
+    log.warning("Compacting closed hourly partitions of %s", table)
+    spark.sql(_sql.rewrite_closed_hour_data_files(f"{DATABASE}.{table}")).show()
 
-        if _REMOVE_DUPLICATES:
-            # iceberg prefers dynamic overwrite, just set it
-            spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-            spark.sql(
-                """
-                INSERT OVERWRITE employee
-                SELECT employee_id, first(age), start_date, first(team), first(role), first(address), first(name)
-                FROM employee
-                WHERE cast(start_date as date) = '2020-07-01'
-                GROUP BY employee_id, start_date
-                """
-            ).show()
+    # 3) Partition-level duplicate rewrite: keep one row per (vehicle_id, event_time) identity for
+    #    the selected day; first(...) picks survivors deterministically by Kafka offset order.
+    log.warning("Rewriting duplicates for day %s of %s", day, table)
+    spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+    spark.sql(
+        f"""
+        INSERT OVERWRITE {table}
+        SELECT vehicle_id, event_time,
+               first(model), first(speed_kmh), first(soc_pct),
+               first(odometer_km), first(charging),
+               first(kafka_partition), first(kafka_offset)
+        FROM (SELECT * FROM {table} ORDER BY kafka_offset DESC)
+        WHERE cast(event_time as date) = {day_expr}
+        GROUP BY vehicle_id, event_time
+        """
+    ).show()
 
 
 if __name__ == "__main__":

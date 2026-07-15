@@ -1,1 +1,0 @@
-"""Apache Avro streaming examples."""

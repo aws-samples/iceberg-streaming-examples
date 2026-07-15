@@ -34,7 +34,7 @@ import sys
 import tempfile
 import uuid
 
-from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
+from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from iceberg_streaming.cdc._sql import mirror_merge
 from iceberg_streaming.common import DATABASE, JobConfig
@@ -46,7 +46,7 @@ _BATCH_SCHEMA = StructType(
     [
         StructField("operation", StringType()),
         StructField("account_id", LongType()),
-        StructField("balance", DoubleType()),
+        StructField("balance", LongType()),  # minor units (cents); bigint end to end
         StructField("last_updated_ms", LongType()),
         StructField("seq", LongType()),
     ]
@@ -63,7 +63,7 @@ def _parse_args(argv: list[str]) -> tuple[str, dict[str, str]]:
 def _create_table_sql(fqn: str, fv: str) -> str:
     return f"""
         CREATE TABLE {fqn}
-              (account_id bigint, balance float, last_updated timestamp, seq bigint)
+              (account_id bigint, balance bigint, last_updated timestamp, seq bigint)
               PARTITIONED BY (bucket(8, account_id))
               TBLPROPERTIES (
                         'table_type'='ICEBERG',
@@ -152,7 +152,7 @@ def _run_kafka(spark, scenario: Scenario, fqn: str, merge_sql: str, bootstrap: s
     src = (
         src.drop("value")
         .withColumn("account_id", F.col("account_id").cast("bigint"))
-        .withColumn("balance", F.col("balance").cast("float"))
+        .withColumn("balance", F.col("balance").cast("bigint"))
         .withColumn("last_updated", (F.col("last_updated") / 1000).cast("timestamp"))
         .withColumn("seq", F.col("seq").cast("long"))
     )
@@ -177,7 +177,7 @@ def _run_kafka(spark, scenario: Scenario, fqn: str, merge_sql: str, bootstrap: s
 
 def _actual_state(spark, fqn: str) -> dict[int, tuple[int, int]]:
     rows = spark.sql(f"SELECT account_id, balance, seq FROM {fqn}").collect()
-    return {int(r["account_id"]): (int(round(r["balance"])), int(r["seq"])) for r in rows}
+    return {int(r["account_id"]): (int(r["balance"]), int(r["seq"])) for r in rows}
 
 
 def _delete_encoding_report(spark, fqn: str) -> dict:

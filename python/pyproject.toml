@@ -35,30 +35,19 @@ dev = [
 testpaths = ["tests"]
 
 [project.scripts]
+iot-native-ingest = "iceberg_streaming.iot.spark_native_iceberg_ingest:main"
 iot-custom-ingest = "iceberg_streaming.iot.spark_custom_iceberg_ingest:main"
-iot-mor = "iceberg_streaming.iot.spark_custom_iceberg_ingest_mor:main"
-iot-s3buckets-avro = "iceberg_streaming.iot.s3buckets_avro:main"
-iot-s3buckets-orc = "iceberg_streaming.iot.s3buckets_orc:main"
-iot-s3buckets-auto-avro = "iceberg_streaming.iot.s3buckets_auto_avro:main"
-iot-s3buckets-auto-orc = "iceberg_streaming.iot.s3buckets_auto_orc:main"
-iot-proto-hex = "iceberg_streaming.iot.spark_custom_iceberg_ingest_proto_hex:main"
+proto-udf = "iceberg_streaming.iot.spark_proto_udf:main"
 iceberg-utils = "iceberg_streaming.iot.spark_iceberg_utils:main"
-proto-native = "iceberg_streaming.proto.spark_native_iceberg_ingest_proto:main"
-proto-udf = "iceberg_streaming.proto.spark_proto_udf:main"
-avro-native = "iceberg_streaming.avro.spark_native_iceberg_ingest_avro:main"
-avro-parquet-mor = "iceberg_streaming.avro.spark_avro_ingest_mor_parquet:main"
 cdc-log-change = "iceberg_streaming.cdc.spark_log_change:main"
 cdc-mirror = "iceberg_streaming.cdc.spark_cdc_mirror:main"
 cdc-incremental = "iceberg_streaming.cdc.spark_incremental_pipeline:main"
 cdc-streaming-mirror = "iceberg_streaming.cdc.spark_streaming_cdc_mirror:main"
 iceberg-maintenance = "iceberg_streaming.maintenance.iceberg_maintenance:main"
 scenario = "iceberg_streaming.scenarios.runner:main"
-proto-producer = "iceberg_streaming.kafka.proto_producer:main"
-avro-producer = "iceberg_streaming.kafka.avro_producer:main"
-json-producer = "iceberg_streaming.kafka.json_producer:main"
+telemetry-producer = "iceberg_streaming.kafka.telemetry_producer:main"
+telemetry-consumer = "iceberg_streaming.kafka.telemetry_consumer:main"
 cdc-simulator = "iceberg_streaming.kafka.kafka_cdc_simulator:main"
-proto-consumer = "iceberg_streaming.kafka.proto_consumer:main"
-avro-consumer = "iceberg_streaming.kafka.avro_consumer:main"
 
 [build-system]
 requires = ["hatchling"]
