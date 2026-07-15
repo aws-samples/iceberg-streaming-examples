@@ -15,7 +15,7 @@ dependencies = [
     # zstd compression codec for the high-throughput Kafka producers.
     "zstandard>=0.22",
     # Protocol Buffers runtime for the producers (the *_pb2 modules are generated from
-    # ../src/main/protobuf/Employee.proto, see scripts/gen_proto.sh).
+    # ../src/main/protobuf/VehicleTelemetry.proto, see scripts/gen_proto.sh).
     "protobuf>=5.27,<6",
     # Avro (de)serialization for the Avro producer/consumer.
     "fastavro>=1.9",
