@@ -49,6 +49,12 @@ nb-configuration.xml
 # OSX
 .DS_Store
 
+# EKS scripts local state (created-resource tracking + staged docker context)
+scripts/eks/.state/
+scripts/eks/app.jar
+scripts/eks/VehicleTelemetry.desc
+scripts/eks/VehicleTelemetry.avsc
+
 # Compiled Output
 dist/
 tmp/

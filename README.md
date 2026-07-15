@@ -646,6 +646,14 @@ protobuf-binding generation and troubleshooting. Differences from the Java proje
 Schema Registry clients and the SPJ/benchmark jobs are not ported (JVM-only), and `cdc-incremental`
 advances its watermark in a separate commit.
 
+## Running on Amazon EKS
+
+A set of numbered scripts under [`scripts/eks/`](scripts/eks/) stands up (or adopts) everything
+needed to run the telemetry pipeline on Spark-on-Kubernetes - VPC, EKS cluster (eksctl), ECR image
+with the code baked in, S3 warehouse/checkpoint bucket, Glue database, IRSA identity, an in-cluster
+demo Kafka and a submit/run helper - plus a teardown that deletes only what the scripts created
+(adopted resources are protected). See [`scripts/eks/README.md`](scripts/eks/README.md).
+
 ## Running on EMR Serverless
 
 Create an S3 bucket with the following structure:
