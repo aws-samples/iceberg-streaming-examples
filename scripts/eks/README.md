@@ -55,8 +55,8 @@ Set these before running the scripts; adopted resources are validated, recorded 
 
 Other knobs: `AWS_REGION`, `CLUSTER_NAME`, `K8S_VERSION`, `ARCH=arm64|amd64` (switches nodegroup
 type m7g/m6i **and** the docker build platform), `NODE_TYPE`, `NAMESPACE`, `SERVICE_ACCOUNT`,
-`ECR_REPO_NAME`, `SPARK_BASE_IMAGE`, and for `06-run.sh`: `EXECUTORS`, `EXECUTOR_CORES`,
-`EXECUTOR_MEMORY`, `DRIVER_MEMORY`, `JOB_CLASS`.
+`ECR_REPO_NAME`, `SPARK_BASE_IMAGE`, `BUCKET_KMS_KEY` (see *Encryption*), and for `06-run.sh`:
+`EXECUTORS`, `EXECUTOR_CORES`, `EXECUTOR_MEMORY`, `DRIVER_MEMORY`, `JOB_CLASS`, `PRODUCER_CLASS`.
 
 ## How it works
 
@@ -77,6 +77,12 @@ type m7g/m6i **and** the docker build platform), `NODE_TYPE`, `NAMESPACE`, `SERV
 * **Identity.** Driver and executors run the `spark` service account with **IRSA**: an IAM role
   scoped to that one service account, carrying a least-privilege policy (S3 restricted to the demo
   bucket, Glue restricted to the `bigdata` database). No node-wide credentials.
+* **Encryption.** Buckets created by `03-artifacts.sh` default to SSE-KMS with the **AWS managed
+  key** (`aws/s3`, bucket keys enabled) - nothing to manage and no extra IAM statements. Set
+  `BUCKET_KMS_KEY=<key arn>` before `03-artifacts.sh` to use a customer-managed key instead.
+  Either way `04-identity.sh` inspects the bucket's default encryption (created *or* reused): a
+  customer-managed key gets a scoped `GenerateDataKey`/`Decrypt`/`DescribeKey` statement on
+  exactly that key; SSE-S3 and the AWS managed key need none.
 * **Networking.** Nodes run on private subnets; egress goes through a single NAT gateway (demo
   cost profile - production wants one NAT per AZ). Public subnets are tagged
   `kubernetes.io/role/elb`, private ones `kubernetes.io/role/internal-elb`, so load balancers

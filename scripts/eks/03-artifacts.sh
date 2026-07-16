@@ -41,9 +41,21 @@ else
     aws s3api create-bucket --bucket "$BUCKET" \
       --create-bucket-configuration LocationConstraint="$AWS_REGION" >/dev/null
   fi
-  # New buckets block public access and use SSE-S3 by default; make it explicit anyway.
+  # New buckets block public access; make it explicit anyway.
   aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+  # Default encryption: SSE-KMS with the AWS managed key (aws/s3) - no key to manage
+  # and no extra IAM statements needed. Provide BUCKET_KMS_KEY=<key arn> to use a
+  # customer-managed key instead (04-identity.sh then grants the pods scoped access to it).
+  if [ -n "${BUCKET_KMS_KEY:-}" ]; then
+    log "Enabling SSE-KMS with customer-managed key $BUCKET_KMS_KEY"
+    aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
+      "{\"Rules\":[{\"ApplyServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"aws:kms\",\"KMSMasterKeyID\":\"${BUCKET_KMS_KEY}\"},\"BucketKeyEnabled\":true}]}"
+  else
+    log "Enabling SSE-KMS with the AWS managed key (aws/s3)"
+    aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
+      '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"aws:kms"},"BucketKeyEnabled":true}]}'
+  fi
   aws s3api put-bucket-tagging --bucket "$BUCKET" \
     --tagging "TagSet=[{Key=Project,Value=${TAG_PROJECT}},{Key=ManagedBy,Value=${TAG_MANAGED_BY}}]"
   state_set BUCKET_CREATED true

@@ -17,15 +17,25 @@ POLICY_NAME="${CLUSTER_NAME}-spark-s3-glue"
 # Reused buckets may be SSE-KMS encrypted: detect the key so the policy grants
 # the pods GenerateDataKey/Decrypt on exactly that key (nothing else). The bucket
 # config may reference the key by ARN, key id or alias/ - resolve to the key ARN.
+# The AWS managed key (aws/s3, KeyManager=AWS) needs no identity-based grant, so it
+# is skipped: account principals use it implicitly through S3.
 BUCKET_KMS_KEY_ID="$(aws s3api get-bucket-encryption --bucket "$BUCKET" \
   --query "ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.KMSMasterKeyID" \
   --output text 2>/dev/null || true)"
 BUCKET_KMS_KEY_ARN=""
 if [ -n "$BUCKET_KMS_KEY_ID" ] && [ "$BUCKET_KMS_KEY_ID" != "None" ]; then
-  BUCKET_KMS_KEY_ARN="$(aws kms describe-key --key-id "$BUCKET_KMS_KEY_ID" \
-    --query "KeyMetadata.Arn" --output text 2>/dev/null || true)"
+  KEY_MANAGER="$(aws kms describe-key --key-id "$BUCKET_KMS_KEY_ID" \
+    --query "KeyMetadata.KeyManager" --output text 2>/dev/null || true)"
+  if [ "$KEY_MANAGER" = "CUSTOMER" ]; then
+    BUCKET_KMS_KEY_ARN="$(aws kms describe-key --key-id "$BUCKET_KMS_KEY_ID" \
+      --query "KeyMetadata.Arn" --output text 2>/dev/null || true)"
+  fi
 fi
-[ -n "$BUCKET_KMS_KEY_ARN" ] && log "Bucket $BUCKET uses SSE-KMS key $BUCKET_KMS_KEY_ARN (policy will include scoped KMS access)"
+if [ -n "$BUCKET_KMS_KEY_ARN" ]; then
+  log "Bucket $BUCKET uses a customer-managed SSE-KMS key $BUCKET_KMS_KEY_ARN (policy will include scoped KMS access)"
+else
+  log "Bucket $BUCKET uses SSE-S3 or the AWS managed KMS key - no KMS policy statement needed"
+fi
 
 # ------------------------------------------------------------------ Glue database
 if aws glue get-database --name "$GLUE_DATABASE" >/dev/null 2>&1; then
