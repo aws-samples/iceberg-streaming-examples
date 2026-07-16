@@ -25,7 +25,10 @@ ARG ICEBERG_VERSION=1.11.0
 ARG KAFKA_CLIENTS_VERSION=3.9.1
 ARG COMMONS_POOL2_VERSION=2.12.0
 ARG HADOOP_AWS_VERSION=3.4.1
-ARG AWS_SDK_BUNDLE_VERSION=2.24.6
+# Must match the SDK line iceberg-aws-bundle embeds (awssdk-bom of the pinned Iceberg release).
+# Two unshaded SDK copies end up on the classpath; if this one is older, Iceberg fails at
+# runtime with errors like NoSuchFieldError: ADAPTIVE_V2.
+ARG AWS_SDK_BUNDLE_VERSION=2.44.4
 
 USER root
 WORKDIR /tmp/jars
@@ -43,9 +46,12 @@ RUN M2=https://repo1.maven.org/maven2 && \
 FROM ${SPARK_BASE_IMAGE}
 USER root
 COPY --from=deps /tmp/jars/*.jar /opt/spark/jars/
-# Staged by 03-artifacts.sh next to this Dockerfile:
-COPY app.jar /opt/spark/work-dir/app.jar
-COPY VehicleTelemetry.desc /opt/spark/work-dir/VehicleTelemetry.desc
-COPY VehicleTelemetry.avsc /opt/spark/work-dir/VehicleTelemetry.avsc
-RUN chown -R spark:spark /opt/spark/work-dir
+# Staged by 03-artifacts.sh next to this Dockerfile. NOT under /opt/spark/work-dir:
+# that is the driver's working directory, and Spark copies the application jar into
+# the working directory on startup - a jar already there gets copied onto itself
+# and deleted (NoSuchFileException on the driver).
+COPY app.jar /opt/spark/app/app.jar
+COPY VehicleTelemetry.desc /opt/spark/app/VehicleTelemetry.desc
+COPY VehicleTelemetry.avsc /opt/spark/app/VehicleTelemetry.avsc
+RUN chown -R spark:spark /opt/spark/app
 USER spark

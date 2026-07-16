@@ -14,6 +14,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 BUCKET="$(state_get BUCKET "$BUCKET")"
 POLICY_NAME="${CLUSTER_NAME}-spark-s3-glue"
 
+# Reused buckets may be SSE-KMS encrypted: detect the key so the policy grants
+# the pods GenerateDataKey/Decrypt on exactly that key (nothing else). The bucket
+# config may reference the key by ARN, key id or alias/ - resolve to the key ARN.
+BUCKET_KMS_KEY_ID="$(aws s3api get-bucket-encryption --bucket "$BUCKET" \
+  --query "ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.KMSMasterKeyID" \
+  --output text 2>/dev/null || true)"
+BUCKET_KMS_KEY_ARN=""
+if [ -n "$BUCKET_KMS_KEY_ID" ] && [ "$BUCKET_KMS_KEY_ID" != "None" ]; then
+  BUCKET_KMS_KEY_ARN="$(aws kms describe-key --key-id "$BUCKET_KMS_KEY_ID" \
+    --query "KeyMetadata.Arn" --output text 2>/dev/null || true)"
+fi
+[ -n "$BUCKET_KMS_KEY_ARN" ] && log "Bucket $BUCKET uses SSE-KMS key $BUCKET_KMS_KEY_ARN (policy will include scoped KMS access)"
+
 # ------------------------------------------------------------------ Glue database
 if aws glue get-database --name "$GLUE_DATABASE" >/dev/null 2>&1; then
   log "Glue database $GLUE_DATABASE already exists (reusing; teardown will keep it)"
@@ -62,7 +75,16 @@ else
         "arn:aws:glue:${AWS_REGION}:${ACCOUNT_ID}:database/${GLUE_DATABASE}",
         "arn:aws:glue:${AWS_REGION}:${ACCOUNT_ID}:table/${GLUE_DATABASE}/*"
       ]
+    }$( if [ -n "$BUCKET_KMS_KEY_ARN" ]; then cat <<KMS
+,
+    {
+      "Sid": "KmsForBucketSse",
+      "Effect": "Allow",
+      "Action": ["kms:GenerateDataKey", "kms:Decrypt", "kms:DescribeKey"],
+      "Resource": "${BUCKET_KMS_KEY_ARN}"
     }
+KMS
+fi )
   ]
 }
 EOF
@@ -102,9 +124,10 @@ metadata:
   name: spark-driver
   namespace: ${NAMESPACE}
 rules:
+  # patch/update included: Spark 4 manages the driver service via server-side apply (PATCH)
   - apiGroups: [""]
     resources: ["pods", "pods/log", "services", "configmaps", "persistentvolumeclaims"]
-    verbs: ["create", "get", "list", "watch", "delete", "deletecollection"]
+    verbs: ["create", "get", "list", "watch", "patch", "update", "delete", "deletecollection"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get", "list", "watch"]

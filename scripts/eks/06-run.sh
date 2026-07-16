@@ -21,6 +21,8 @@
 #
 # Tunables (env): EXECUTORS=2 EXECUTOR_CORES=2 EXECUTOR_MEMORY=6g DRIVER_MEMORY=2g
 #                 JOB_CLASS=com.aws.emr.spark.iot.SparkCustomIcebergIngest
+#                 PRODUCER_CLASS=com.aws.emr.kafka.TelemetryProducer  (e.g. the CDC feed:
+#                 PRODUCER_CLASS=com.aws.emr.kafka.KafkaCDCSimulator ./06-run.sh producer rate=100000)
 #
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
@@ -30,6 +32,7 @@ IMAGE="$(state_get IMAGE "$ECR_URI:$IMAGE_TAG")"
 BUCKET="$(state_get BUCKET "$BUCKET")"
 BOOTSTRAP="${KAFKA_BOOTSTRAP:-$(state_get KAFKA_BOOTSTRAP)}"
 JOB_CLASS="${JOB_CLASS:-com.aws.emr.spark.iot.SparkCustomIcebergIngest}"
+PRODUCER_CLASS="${PRODUCER_CLASS:-com.aws.emr.kafka.TelemetryProducer}"
 EXECUTORS="${EXECUTORS:-2}"
 EXECUTOR_CORES="${EXECUTOR_CORES:-2}"
 EXECUTOR_MEMORY="${EXECUTOR_MEMORY:-6g}"
@@ -44,27 +47,28 @@ case "$CMD" in
   # ---------------------------------------------------------------- producer
   producer)
     [ -n "$BOOTSTRAP" ] || die "No Kafka bootstrap known. Run 05-kafka.sh or export KAFKA_BOOTSTRAP."
-    NAME="telemetry-producer-$RUN_ID"
-    log "Starting producer Job $NAME (image $IMAGE, bootstrap $BOOTSTRAP)"
+    NAME="producer-$RUN_ID"
+    log "Starting producer Job $NAME ($PRODUCER_CLASS, image $IMAGE, bootstrap $BOOTSTRAP)"
     kubectl apply -f - <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: ${NAME}
   namespace: ${NAMESPACE}
-  labels: { app: telemetry-producer, project: ${TAG_PROJECT} }
+  labels: { app: kafka-producer, project: ${TAG_PROJECT} }
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 3600
   template:
-    metadata: { labels: { app: telemetry-producer } }
+    metadata: { labels: { app: kafka-producer } }
     spec:
       restartPolicy: Never
       serviceAccountName: ${SERVICE_ACCOUNT}
       containers:
         - name: producer
           image: ${IMAGE}
-          command: ["java", "-cp", "/opt/spark/work-dir/app.jar", "com.aws.emr.kafka.TelemetryProducer"]
+          imagePullPolicy: Always
+          command: ["java", "-cp", "/opt/spark/app/app.jar", "${PRODUCER_CLASS}"]
           args:
             - "bootstrap=${BOOTSTRAP}"
 $(yaml_args "$@")
@@ -99,6 +103,7 @@ spec:
       containers:
         - name: spark-submit
           image: ${IMAGE}
+          imagePullPolicy: Always
           command: ["/opt/spark/bin/spark-submit"]
           args:
             - "--master"
@@ -113,6 +118,8 @@ spec:
             - "spark.kubernetes.namespace=${NAMESPACE}"
             - "--conf"
             - "spark.kubernetes.container.image=${IMAGE}"
+            - "--conf"
+            - "spark.kubernetes.container.image.pullPolicy=Always"
             - "--conf"
             - "spark.kubernetes.authenticate.driver.serviceAccountName=${SERVICE_ACCOUNT}"
             - "--conf"
@@ -131,15 +138,20 @@ spec:
             # s3a:// (checkpoints) resolves credentials through the IRSA web identity
             - "--conf"
             - "spark.hadoop.fs.s3a.aws.credentials.provider=software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider"
-            - "local:///opt/spark/work-dir/app.jar"
+            # explicit SDK region on driver + executors (pods must not depend on IMDS hop limits)
+            - "--conf"
+            - "spark.kubernetes.driverEnv.AWS_REGION=${AWS_REGION}"
+            - "--conf"
+            - "spark.executorEnv.AWS_REGION=${AWS_REGION}"
+            - "local:///opt/spark/app/app.jar"
             # unified key=value application arguments (see JobConfig.usage())
             - "runtime=emr"
             - "catalog=glue"
             - "warehouse=s3://${BUCKET}/warehouse"
             - "checkpoint=s3a://${BUCKET}/checkpoint"
             - "bootstrap=${BOOTSTRAP}"
-            - "descriptor=/opt/spark/work-dir/VehicleTelemetry.desc"
-            - "avro=/opt/spark/work-dir/VehicleTelemetry.avsc"
+            - "descriptor=/opt/spark/app/VehicleTelemetry.desc"
+            - "avro=/opt/spark/app/VehicleTelemetry.avsc"
 $(yaml_args "$@")
           resources:
             requests: { cpu: 500m, memory: 512Mi }
